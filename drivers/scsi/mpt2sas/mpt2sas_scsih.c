@@ -94,6 +94,9 @@ static u8 tm_tr_cb_idx = -1 ;
 static u8 tm_tr_volume_cb_idx = -1 ;
 static u8 tm_sas_control_cb_idx = -1;
 
+/* adapter status polling workqueue */
+static struct workqueue_struct *mpt2sas_fault_reset_work_q;
+
 /* command line options */
 static u32 logging_level;
 MODULE_PARM_DESC(logging_level, " bits for enabling additional logging info "
@@ -7681,11 +7684,8 @@ _base_fault_reset_work(struct work_struct *work)
 		 * controller to non-operational state and remove the dead ioc
 		 * function.
 		 */
-		if (ioc->non_operational_loop++ < 5) {
-			spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock,
-							 flags);
+		if (ioc->non_operational_loop++ < 5)
 			goto rearm_timer;
-		}
 
 		/*
 		 * Call _scsih_flush_pending_cmds(ioc) so that we flush all
@@ -7729,17 +7729,14 @@ _base_fault_reset_work(struct work_struct *work)
 			    MPI2_DOORBELL_DATA_MASK);
 	}
 
-	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
  rearm_timer:
-	if (ioc->fault_reset_work_q)
-		queue_delayed_work(ioc->fault_reset_work_q,
-		    &ioc->fault_reset_work,
-		    msecs_to_jiffies(FAULT_POLLING_INTERVAL));
-	spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
+	queue_delayed_work(mpt2sas_fault_reset_work_q,
+	    &ioc->fault_reset_work,
+	    msecs_to_jiffies(FAULT_POLLING_INTERVAL));
 }
 
 /**
- * _scsih_start_watchdog - start the fault_reset_work_q
+ * _scsih_start_watchdog - start this adapter's fault_reset_work
  * @ioc: per adapter object
  * Context: sleep.
  *
@@ -7748,32 +7745,15 @@ _base_fault_reset_work(struct work_struct *work)
 static void
 _scsih_start_watchdog(struct MPT2SAS_ADAPTER *ioc)
 {
-	unsigned long	 flags;
-
-	if (ioc->fault_reset_work_q)
-		return;
-
 	/* initialize fault polling */
 	INIT_DELAYED_WORK(&ioc->fault_reset_work, _base_fault_reset_work);
-	snprintf(ioc->fault_reset_work_q_name,
-	    sizeof(ioc->fault_reset_work_q_name), "poll_%d_status", ioc->id);
-	ioc->fault_reset_work_q =
-		create_singlethread_workqueue(ioc->fault_reset_work_q_name);
-	if (!ioc->fault_reset_work_q) {
-		printk(MPT2SAS_ERR_FMT "%s: failed (line=%d)\n",
-		    ioc->name, __func__, __LINE__);
-			return;
-	}
-	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
-	if (ioc->fault_reset_work_q)
-		queue_delayed_work(ioc->fault_reset_work_q,
-		    &ioc->fault_reset_work,
-		    msecs_to_jiffies(FAULT_POLLING_INTERVAL));
-	spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
+	queue_delayed_work(mpt2sas_fault_reset_work_q,
+	    &ioc->fault_reset_work,
+	    msecs_to_jiffies(FAULT_POLLING_INTERVAL));
 }
 
 /**
- * _scsih_stop_watchdog - stop the fault_reset_work_q
+ * _scsih_stop_watchdog - stop this adapter's fault_reset_work
  * @ioc: per adapter object
  * Context: sleep.
  *
@@ -7782,18 +7762,7 @@ _scsih_start_watchdog(struct MPT2SAS_ADAPTER *ioc)
 static void
 _scsih_stop_watchdog(struct MPT2SAS_ADAPTER *ioc)
 {
-	unsigned long	 flags;
-	struct workqueue_struct *wq;
-
-	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
-	wq = ioc->fault_reset_work_q;
-	ioc->fault_reset_work_q = NULL;
-	spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
-	if (wq) {
-		if (!cancel_delayed_work(&ioc->fault_reset_work))
-			flush_workqueue(wq);
-		destroy_workqueue(wq);
-	}
+	cancel_delayed_work_sync(&ioc->fault_reset_work);
 }
 
 /* shost template */
@@ -8666,6 +8635,15 @@ _scsih_init(void)
 	printk(KERN_INFO "%s version %s loaded\n", MPT2SAS_DRIVER_NAME,
 	    MPT2SAS_DRIVER_VERSION);
 
+	/* adapter status polling workqueue */
+	mpt2sas_fault_reset_work_q =
+		create_singlethread_workqueue("mpt2sas_poll_status");
+	if (!mpt2sas_fault_reset_work_q) {
+		pr_info("%s: unable to create status workqueue\n",
+			MPT2SAS_DRIVER_NAME);
+		return -ENOMEM;
+	}
+
 	mpt2sas_transport_template =
 	    sas_attach_transport(&mpt2sas_transport_functions);
 	if (!mpt2sas_transport_template)
@@ -8720,6 +8698,10 @@ _scsih_init(void)
 		/* raid transport support */
 		raid_class_release(mpt2sas_raid_template);
 		sas_release_transport(mpt2sas_transport_template);
+
+		/* adapter status polling workqueue */
+		flush_workqueue(mpt2sas_fault_reset_work_q);
+		destroy_workqueue(mpt2sas_fault_reset_work_q);
 	}
 
 	return error;
@@ -8737,6 +8719,10 @@ _scsih_exit(void)
 	    MPT2SAS_DRIVER_VERSION);
 
 	pci_unregister_driver(&scsih_driver);
+
+	/* adapter status polling workqueue */
+	flush_workqueue(mpt2sas_fault_reset_work_q);
+	destroy_workqueue(mpt2sas_fault_reset_work_q);
 
 	mpt2sas_ctl_exit();
 
