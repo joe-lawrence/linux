@@ -7651,8 +7651,6 @@ _base_fault_reset_work(struct work_struct *work)
 
 	doorbell = mpt2sas_base_get_iocstate(ioc, 0);
 	if ((doorbell & MPI2_IOC_STATE_MASK) == MPI2_IOC_STATE_MASK) {
-		printk(MPT2SAS_INFO_FMT "%s : SAS host is non-operational !!!!\n",
-			ioc->name, __func__);
 
 		/* It may be possible that EEH recovery can resolve some of
 		 * pci bus failure issues rather removing the dead ioc function
@@ -7664,6 +7662,9 @@ _base_fault_reset_work(struct work_struct *work)
 		 */
 		if (ioc->non_operational_loop++ < 5)
 			goto rearm_timer;
+
+		printk(MPT2SAS_INFO_FMT "%s : SAS host is non-operational !!!!\n",
+			ioc->name, __func__);
 
 		/*
 		 * Call _scsih_flush_pending_cmds(ioc) so that we flush all
