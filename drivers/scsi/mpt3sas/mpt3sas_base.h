@@ -558,7 +558,6 @@ enum mutex_type {
 	TM_MUTEX_ON = 1,
 };
 
-typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
 /**
  * struct MPT3SAS_ADAPTER - per adapter struct
  * @list: ioc_list
@@ -601,7 +600,6 @@ typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
  * @msix_vector_count: number msix vectors
  * @cpu_msix_table: table for mapping cpus to msix index
  * @cpu_msix_table_sz: table size
- * @schedule_dead_ioc_flush_running_cmds: callback to flush pending commands
  * @scsi_io_cb_idx: shost generated commands
  * @tm_cb_idx: task management commands
  * @scsih_cb_idx: scsih internal commands
@@ -751,7 +749,6 @@ struct MPT3SAS_ADAPTER {
 	u8		*cpu_msix_table;
 	u16		cpu_msix_table_sz;
 	u32		ioc_reset_count;
-	MPT3SAS_FLUSH_RUNNING_CMDS schedule_dead_ioc_flush_running_cmds;
 
 	/* internal commands, callback index */
 	u8		scsi_io_cb_idx;
@@ -926,8 +923,6 @@ typedef u8 (*MPT_CALLBACK)(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 
 /* base shared API */
 extern struct list_head mpt3sas_ioc_list;
-void mpt3sas_base_start_watchdog(struct MPT3SAS_ADAPTER *ioc);
-void mpt3sas_base_stop_watchdog(struct MPT3SAS_ADAPTER *ioc);
 
 int mpt3sas_base_attach(struct MPT3SAS_ADAPTER *ioc);
 void mpt3sas_base_detach(struct MPT3SAS_ADAPTER *ioc);

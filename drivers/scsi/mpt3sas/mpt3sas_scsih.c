@@ -53,6 +53,7 @@
 #include <linux/interrupt.h>
 #include <linux/aer.h>
 #include <linux/raid_class.h>
+#include <linux/kthread.h>
 
 #include "mpt3sas_base.h"
 
@@ -62,6 +63,8 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(MPT3SAS_DRIVER_VERSION);
 
 #define RAID_CHANNEL 1
+#define FAULT_POLLING_INTERVAL 1000 /* in milliseconds */
+
 /* forward proto's */
 static void _scsih_expander_node_remove(struct MPT3SAS_ADAPTER *ioc,
 	struct _sas_node *sas_expander);
@@ -7222,6 +7225,165 @@ mpt3sas_scsih_event_callback(struct MPT3SAS_ADAPTER *ioc, u8 msix_index,
 	return 1;
 }
 
+/**
+ *  mpt3sas_remove_dead_ioc_func - kthread context to remove dead ioc
+ * @arg: input argument, used to derive ioc
+ *
+ * Return 0 if controller is removed from pci subsystem.
+ * Return -1 for other case.
+ */
+static int mpt3sas_remove_dead_ioc_func(void *arg)
+{
+	struct MPT3SAS_ADAPTER *ioc = (struct MPT3SAS_ADAPTER *)arg;
+	struct pci_dev *pdev;
+
+	if ((ioc == NULL))
+		return -1;
+
+	pdev = ioc->pdev;
+	if ((pdev == NULL))
+		return -1;
+	pci_stop_and_remove_bus_device(pdev);
+	return 0;
+}
+
+/**
+ * _scsih_fault_reset_work - workq handling ioc fault conditions
+ * @work: input argument, used to derive ioc
+ * Context: sleep.
+ *
+ * Return nothing.
+ */
+static void
+_scsih_fault_reset_work(struct work_struct *work)
+{
+	struct MPT3SAS_ADAPTER *ioc =
+	    container_of(work, struct MPT3SAS_ADAPTER, fault_reset_work.work);
+	unsigned long	 flags;
+	u32 doorbell;
+	int rc;
+	struct task_struct *p;
+
+
+	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
+	if (ioc->shost_recovery)
+		goto rearm_timer;
+	spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
+
+	doorbell = mpt3sas_base_get_iocstate(ioc, 0);
+	if ((doorbell & MPI2_IOC_STATE_MASK) == MPI2_IOC_STATE_MASK) {
+		pr_err(MPT3SAS_FMT "SAS host is non-operational !!!!\n",
+		    ioc->name);
+
+		/*
+		 * Call _scsih_flush_pending_cmds(ioc) so that we flush all
+		 * pending commands back to OS. This call is required to avoid
+		 * deadlock at block layer. Dead IOC will fail to do diag reset,
+		 * and this call is safe since dead ioc will never return any
+		 * command back from HW.
+		 */
+		_scsih_flush_running_cmds(ioc);
+		/*
+		 * Set remove_host flag early since kernel thread will
+		 * take some time to execute.
+		 */
+		ioc->remove_host = 1;
+		/*Remove the Dead Host */
+		p = kthread_run(mpt3sas_remove_dead_ioc_func, ioc,
+		    "mpt3sas_dead_ioc_%d", ioc->id);
+		if (IS_ERR(p))
+			pr_err(MPT3SAS_FMT
+			"%s: Running mpt3sas_dead_ioc thread failed !!!!\n",
+			ioc->name, __func__);
+		else
+			pr_err(MPT3SAS_FMT
+			"%s: Running mpt3sas_dead_ioc thread success !!!!\n",
+			ioc->name, __func__);
+		return; /* don't rearm timer */
+	}
+
+	if ((doorbell & MPI2_IOC_STATE_MASK) != MPI2_IOC_STATE_OPERATIONAL) {
+		rc = mpt3sas_base_hard_reset_handler(ioc, CAN_SLEEP,
+		    FORCE_BIG_HAMMER);
+		pr_warn(MPT3SAS_FMT "%s: hard reset: %s\n", ioc->name,
+		    __func__, (rc == 0) ? "success" : "failed");
+		doorbell = mpt3sas_base_get_iocstate(ioc, 0);
+		if ((doorbell & MPI2_IOC_STATE_MASK) == MPI2_IOC_STATE_FAULT)
+			mpt3sas_base_fault_info(ioc, doorbell &
+			    MPI2_DOORBELL_DATA_MASK);
+		if (rc && (doorbell & MPI2_IOC_STATE_MASK) !=
+		    MPI2_IOC_STATE_OPERATIONAL)
+			return; /* don't rearm timer */
+	}
+
+	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
+ rearm_timer:
+	if (ioc->fault_reset_work_q)
+		queue_delayed_work(ioc->fault_reset_work_q,
+		    &ioc->fault_reset_work,
+		    msecs_to_jiffies(FAULT_POLLING_INTERVAL));
+	spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
+}
+
+/**
+ * _scsih_start_watchdog - start the fault_reset_work_q
+ * @ioc: per adapter object
+ * Context: sleep.
+ *
+ * Return nothing.
+ */
+static void
+_scsih_start_watchdog(struct MPT3SAS_ADAPTER *ioc)
+{
+	unsigned long	 flags;
+
+	if (ioc->fault_reset_work_q)
+		return;
+
+	/* initialize fault polling */
+
+	INIT_DELAYED_WORK(&ioc->fault_reset_work, _scsih_fault_reset_work);
+	snprintf(ioc->fault_reset_work_q_name,
+	    sizeof(ioc->fault_reset_work_q_name), "poll_%d_status", ioc->id);
+	ioc->fault_reset_work_q =
+		create_singlethread_workqueue(ioc->fault_reset_work_q_name);
+	if (!ioc->fault_reset_work_q) {
+		pr_err(MPT3SAS_FMT "%s: failed (line=%d)\n",
+		    ioc->name, __func__, __LINE__);
+			return;
+	}
+	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
+	if (ioc->fault_reset_work_q)
+		queue_delayed_work(ioc->fault_reset_work_q,
+		    &ioc->fault_reset_work,
+		    msecs_to_jiffies(FAULT_POLLING_INTERVAL));
+	spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
+}
+
+/**
+ * _scsih_stop_watchdog - stop the fault_reset_work_q
+ * @ioc: per adapter object
+ * Context: sleep.
+ *
+ * Return nothing.
+ */
+static void
+_scsih_stop_watchdog(struct MPT3SAS_ADAPTER *ioc)
+{
+	unsigned long flags;
+	struct workqueue_struct *wq;
+
+	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
+	wq = ioc->fault_reset_work_q;
+	ioc->fault_reset_work_q = NULL;
+	spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
+	if (wq) {
+		if (!cancel_delayed_work(&ioc->fault_reset_work))
+			flush_workqueue(wq);
+		destroy_workqueue(wq);
+	}
+}
+
 /* shost template */
 static struct scsi_host_template scsih_driver_template = {
 	.module				= THIS_MODULE,
@@ -7437,6 +7599,7 @@ static void _scsih_remove(struct pci_dev *pdev)
 	}
 
 	sas_remove_host(shost);
+	_scsih_stop_watchdog(ioc);
 	mpt3sas_base_detach(ioc);
 	list_del(&ioc->list);
 	scsi_remove_host(shost);
@@ -7468,6 +7631,7 @@ _scsih_shutdown(struct pci_dev *pdev)
 		destroy_workqueue(wq);
 
 	_scsih_ir_shutdown(ioc);
+	_scsih_stop_watchdog(ioc);
 	mpt3sas_base_detach(ioc);
 }
 
@@ -7716,7 +7880,7 @@ _scsih_scan_finished(struct Scsi_Host *shost, unsigned long time)
 		ioc->wait_for_discovery_to_complete = 0;
 		_scsih_probe_devices(ioc);
 	}
-	mpt3sas_base_start_watchdog(ioc);
+	_scsih_start_watchdog(ioc);
 	ioc->is_driver_loading = 0;
 	return 1;
 }
@@ -7760,7 +7924,6 @@ _scsih_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	ioc->tm_tr_volume_cb_idx = tm_tr_volume_cb_idx;
 	ioc->tm_sas_control_cb_idx = tm_sas_control_cb_idx;
 	ioc->logging_level = logging_level;
-	ioc->schedule_dead_ioc_flush_running_cmds = &_scsih_flush_running_cmds;
 	/* misc semaphores and spin locks */
 	mutex_init(&ioc->reset_in_progress_mutex);
 	spin_lock_init(&ioc->ioc_reset_in_progress_lock);
@@ -7869,7 +8032,7 @@ _scsih_suspend(struct pci_dev *pdev, pm_message_t state)
 	struct MPT3SAS_ADAPTER *ioc = shost_priv(shost);
 	pci_power_t device_state;
 
-	mpt3sas_base_stop_watchdog(ioc);
+	_scsih_stop_watchdog(ioc);
 	flush_scheduled_work();
 	scsi_block_requests(shost);
 	device_state = pci_choose_state(pdev, state);
@@ -7911,7 +8074,7 @@ _scsih_resume(struct pci_dev *pdev)
 
 	mpt3sas_base_hard_reset_handler(ioc, CAN_SLEEP, SOFT_RESET);
 	scsi_unblock_requests(shost);
-	mpt3sas_base_start_watchdog(ioc);
+	_scsih_start_watchdog(ioc);
 	return 0;
 }
 #endif /* CONFIG_PM */
@@ -7942,13 +8105,13 @@ _scsih_pci_error_detected(struct pci_dev *pdev, pci_channel_state_t state)
 		/* Fatal error, prepare for slot reset */
 		ioc->pci_error_recovery = 1;
 		scsi_block_requests(ioc->shost);
-		mpt3sas_base_stop_watchdog(ioc);
+		_scsih_stop_watchdog(ioc);
 		mpt3sas_base_free_resources(ioc);
 		return PCI_ERS_RESULT_NEED_RESET;
 	case pci_channel_io_perm_failure:
 		/* Permanent error, prepare for device removal */
 		ioc->pci_error_recovery = 1;
-		mpt3sas_base_stop_watchdog(ioc);
+		_scsih_stop_watchdog(ioc);
 		_scsih_flush_running_cmds(ioc);
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
@@ -8009,7 +8172,7 @@ _scsih_pci_resume(struct pci_dev *pdev)
 	pr_info(MPT3SAS_FMT "PCI error: resume callback!!\n", ioc->name);
 
 	pci_cleanup_aer_uncorrect_error_status(pdev);
-	mpt3sas_base_start_watchdog(ioc);
+	_scsih_start_watchdog(ioc);
 	scsi_unblock_requests(ioc->shost);
 }
 
