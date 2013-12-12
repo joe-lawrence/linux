@@ -583,6 +583,7 @@ enum mutex_type {
  * @aen_event_read_flag: event log was read
  * @broadcast_aen_busy: broadcast aen waiting to be serviced
  * @shost_recovery: host reset in progress
+ * @shost_attached: host is attached to SCSI topology
  * @ioc_reset_in_progress_lock:
  * @ioc_link_reset_in_progress: phy/hard reset in progress
  * @ignore_loginfos: ignore loginfos during task management
@@ -725,6 +726,7 @@ struct MPT3SAS_ADAPTER {
 	u8		broadcast_aen_busy;
 	u16		broadcast_aen_pending;
 	u8		shost_recovery;
+	u8		shost_attached;
 
 	struct mutex	reset_in_progress_mutex;
 	spinlock_t	ioc_reset_in_progress_lock;
