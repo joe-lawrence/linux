@@ -575,8 +575,6 @@ enum mutex_type {
  * @ir_firmware: IR firmware present
  * @bars: bitmask of BAR's that must be configured
  * @mask_interrupts: ignore interrupt
- * @fault_reset_work_q_name: fw fault work queue
- * @fault_reset_work_q: ""
  * @fault_reset_work: ""
  * @firmware_event_name: fw event work queue
  * @firmware_event_thread: ""
@@ -714,8 +712,6 @@ struct MPT3SAS_ADAPTER {
 	u8		mask_interrupts;
 
 	/* fw fault handler */
-	char		fault_reset_work_q_name[20];
-	struct workqueue_struct *fault_reset_work_q;
 	struct delayed_work fault_reset_work;
 
 	/* fw event handler */
