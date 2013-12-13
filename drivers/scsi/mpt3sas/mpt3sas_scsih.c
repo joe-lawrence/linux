@@ -53,7 +53,6 @@
 #include <linux/interrupt.h>
 #include <linux/aer.h>
 #include <linux/raid_class.h>
-#include <linux/kthread.h>
 
 #include "mpt3sas_base.h"
 
@@ -79,6 +78,8 @@ static u8 _scsih_check_for_pending_tm(struct MPT3SAS_ADAPTER *ioc, u16 smid);
 
 static void _scsih_scan_start(struct Scsi_Host *shost);
 static int _scsih_scan_finished(struct Scsi_Host *shost, unsigned long time);
+
+static void _scsih_detach(struct MPT3SAS_ADAPTER *ioc);
 
 /* global parameters */
 LIST_HEAD(mpt3sas_ioc_list);
@@ -7229,28 +7230,6 @@ mpt3sas_scsih_event_callback(struct MPT3SAS_ADAPTER *ioc, u8 msix_index,
 }
 
 /**
- *  mpt3sas_remove_dead_ioc_func - kthread context to remove dead ioc
- * @arg: input argument, used to derive ioc
- *
- * Return 0 if controller is removed from pci subsystem.
- * Return -1 for other case.
- */
-static int mpt3sas_remove_dead_ioc_func(void *arg)
-{
-	struct MPT3SAS_ADAPTER *ioc = (struct MPT3SAS_ADAPTER *)arg;
-	struct pci_dev *pdev;
-
-	if ((ioc == NULL))
-		return -1;
-
-	pdev = ioc->pdev;
-	if ((pdev == NULL))
-		return -1;
-	pci_stop_and_remove_bus_device(pdev);
-	return 0;
-}
-
-/**
  * _scsih_fault_reset_work - workq handling ioc fault conditions
  * @work: input argument, used to derive ioc
  * Context: sleep.
@@ -7265,7 +7244,6 @@ _scsih_fault_reset_work(struct work_struct *work)
 	unsigned long	 flags;
 	u32 doorbell;
 	int rc;
-	struct task_struct *p;
 
 	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
 	if (ioc->shost_recovery)
@@ -7285,23 +7263,7 @@ _scsih_fault_reset_work(struct work_struct *work)
 		 * command back from HW.
 		 */
 		_scsih_flush_running_cmds(ioc);
-		/*
-		 * Set remove_host flag early since kernel thread will
-		 * take some time to execute.
-		 */
-		ioc->remove_host = 1;
-		/*Remove the Dead Host */
-		p = kthread_run(mpt3sas_remove_dead_ioc_func, ioc,
-		    "mpt3sas_dead_ioc_%d", ioc->id);
-		if (IS_ERR(p))
-			pr_err(MPT3SAS_FMT
-			"%s: Running mpt3sas_dead_ioc thread failed !!!!\n",
-			ioc->name, __func__);
-		else
-			pr_err(MPT3SAS_FMT
-			"%s: Running mpt3sas_dead_ioc thread success !!!!\n",
-			ioc->name, __func__);
-		return; /* don't rearm timer */
+		_scsih_detach(ioc);
 	}
 
 	if ((doorbell & MPI2_IOC_STATE_MASK) != MPI2_IOC_STATE_OPERATIONAL) {
@@ -7530,21 +7492,22 @@ _scsih_ir_shutdown(struct MPT3SAS_ADAPTER *ioc)
 }
 
 /**
- * _scsih_remove - detach and remove add host
- * @pdev: PCI device struct
+ * _scsih_detach - detach from SCSI midlayer and free resources
+ * @ioc: per adapter object
  *
- * Routine called when unloading the driver.
  * Return nothing.
  */
-static void _scsih_remove(struct pci_dev *pdev)
+static void
+_scsih_detach(struct MPT3SAS_ADAPTER *ioc)
 {
-	struct Scsi_Host *shost = pci_get_drvdata(pdev);
-	struct MPT3SAS_ADAPTER *ioc = shost_priv(shost);
 	struct _sas_port *mpt3sas_port, *next_port;
 	struct _raid_device *raid_device, *next;
 	struct MPT3SAS_TARGET *sas_target_priv_data;
 	struct workqueue_struct	*wq;
 	unsigned long flags;
+
+	if (!ioc->shost_attached)
+		return;
 
 	ioc->remove_host = 1;
 	_scsih_fw_event_cleanup_queue(ioc);
@@ -7594,11 +7557,31 @@ static void _scsih_remove(struct pci_dev *pdev)
 		ioc->sas_hba.num_phys = 0;
 	}
 
-	sas_remove_host(shost);
+	sas_remove_host(ioc->shost);
+	scsi_remove_host(ioc->shost);
+	ioc->shost_attached = 0;
+}
+
+/**
+ * _scsih_remove - detach and remove add host
+ * @pdev: PCI device struct
+ *
+ * Routine called when unloading the driver.
+ * Return nothing.
+ */
+static void _scsih_remove(struct pci_dev *pdev)
+{
+	struct Scsi_Host *shost = pci_get_drvdata(pdev);
+	struct MPT3SAS_ADAPTER *ioc = shost_priv(shost);
+
+	ioc->remove_host = 1;
+
 	_scsih_stop_watchdog(ioc);
+	_scsih_detach(ioc);
+
 	mpt3sas_base_detach(ioc);
 	list_del(&ioc->list);
-	scsi_remove_host(shost);
+
 	scsi_host_put(shost);
 }
 
@@ -7613,21 +7596,12 @@ _scsih_shutdown(struct pci_dev *pdev)
 {
 	struct Scsi_Host *shost = pci_get_drvdata(pdev);
 	struct MPT3SAS_ADAPTER *ioc = shost_priv(shost);
-	struct workqueue_struct	*wq;
-	unsigned long flags;
 
 	ioc->remove_host = 1;
-	_scsih_fw_event_cleanup_queue(ioc);
 
-	spin_lock_irqsave(&ioc->fw_event_lock, flags);
-	wq = ioc->firmware_event_thread;
-	ioc->firmware_event_thread = NULL;
-	spin_unlock_irqrestore(&ioc->fw_event_lock, flags);
-	if (wq)
-		destroy_workqueue(wq);
-
-	_scsih_ir_shutdown(ioc);
 	_scsih_stop_watchdog(ioc);
+	_scsih_detach(ioc);
+
 	mpt3sas_base_detach(ioc);
 }
 
@@ -7905,6 +7879,7 @@ _scsih_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	INIT_LIST_HEAD(&ioc->list);
 	list_add_tail(&ioc->list, &mpt3sas_ioc_list);
 	ioc->shost = shost;
+	ioc->shost_attached = 1;
 	ioc->id = mpt_ids++;
 	sprintf(ioc->name, "%s%d", MPT3SAS_DRIVER_NAME, ioc->id);
 	ioc->pdev = pdev;
@@ -8009,6 +7984,7 @@ _scsih_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	list_del(&ioc->list);
 	scsi_remove_host(shost);
  out_add_shost_fail:
+	ioc->shost_attached = 0;
 	scsi_host_put(shost);
 	return -ENODEV;
 }
@@ -8030,7 +8006,8 @@ _scsih_suspend(struct pci_dev *pdev, pm_message_t state)
 
 	_scsih_stop_watchdog(ioc);
 	flush_scheduled_work();
-	scsi_block_requests(shost);
+	if (ioc->shost_attached)
+		scsi_block_requests(shost);
 	device_state = pci_choose_state(pdev, state);
 	pr_info(MPT3SAS_FMT
 		"pdev=0x%p, slot=%s, entering operating state [D%d]\n",
@@ -8069,8 +8046,11 @@ _scsih_resume(struct pci_dev *pdev)
 		return r;
 
 	mpt3sas_base_hard_reset_handler(ioc, CAN_SLEEP, SOFT_RESET);
-	scsi_unblock_requests(shost);
-	_scsih_start_watchdog(ioc);
+	if (ioc->shost_attached) {
+		scsi_unblock_requests(shost);
+		_scsih_start_watchdog(ioc);
+	}
+
 	return 0;
 }
 #endif /* CONFIG_PM */
@@ -8100,15 +8080,17 @@ _scsih_pci_error_detected(struct pci_dev *pdev, pci_channel_state_t state)
 	case pci_channel_io_frozen:
 		/* Fatal error, prepare for slot reset */
 		ioc->pci_error_recovery = 1;
-		scsi_block_requests(ioc->shost);
 		_scsih_stop_watchdog(ioc);
+		if (ioc->shost_attached)
+			scsi_block_requests(ioc->shost);
 		mpt3sas_base_free_resources(ioc);
 		return PCI_ERS_RESULT_NEED_RESET;
 	case pci_channel_io_perm_failure:
 		/* Permanent error, prepare for device removal */
 		ioc->pci_error_recovery = 1;
 		_scsih_stop_watchdog(ioc);
-		_scsih_flush_running_cmds(ioc);
+		if (ioc->shost_attached)
+			_scsih_flush_running_cmds(ioc);
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
 	return PCI_ERS_RESULT_NEED_RESET;
@@ -8168,8 +8150,10 @@ _scsih_pci_resume(struct pci_dev *pdev)
 	pr_info(MPT3SAS_FMT "PCI error: resume callback!!\n", ioc->name);
 
 	pci_cleanup_aer_uncorrect_error_status(pdev);
-	_scsih_start_watchdog(ioc);
-	scsi_unblock_requests(ioc->shost);
+	if (ioc->shost_attached) {
+		_scsih_start_watchdog(ioc);
+		scsi_unblock_requests(ioc->shost);
+	}
 }
 
 /**
