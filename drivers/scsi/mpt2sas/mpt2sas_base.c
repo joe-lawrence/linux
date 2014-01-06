@@ -3567,18 +3567,18 @@ mpt2sas_port_enable_done(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 	u16 ioc_status;
 
 	mpi_reply = mpt2sas_base_get_reply_virt_addr(ioc, reply);
-	if (mpi_reply && mpi_reply->Function == MPI2_FUNCTION_EVENT_ACK)
+	if (!mpi_reply)
+		return 1;
+
+	if (mpi_reply->Function == MPI2_FUNCTION_EVENT_ACK)
 		return 1;
 
 	if (ioc->port_enable_cmds.status == MPT2_CMD_NOT_USED)
 		return 1;
 
 	ioc->port_enable_cmds.status |= MPT2_CMD_COMPLETE;
-	if (mpi_reply) {
-		ioc->port_enable_cmds.status |= MPT2_CMD_REPLY_VALID;
-		memcpy(ioc->port_enable_cmds.reply, mpi_reply,
-		    mpi_reply->MsgLength*4);
-	}
+	ioc->port_enable_cmds.status |= MPT2_CMD_REPLY_VALID;
+	memcpy(ioc->port_enable_cmds.reply, mpi_reply, mpi_reply->MsgLength*4);
 	ioc->port_enable_cmds.status &= ~MPT2_CMD_PENDING;
 
 	ioc_status = le16_to_cpu(mpi_reply->IOCStatus) & MPI2_IOCSTATUS_MASK;
