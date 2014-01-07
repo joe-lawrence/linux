@@ -634,6 +634,7 @@ _ctl_do_mpt_command(struct MPT2SAS_ADAPTER *ioc, struct mpt2_ioctl_command karg,
 	u32 sgl_flags;
 	long ret;
 	u16 wait_state_count;
+	u16 mf_size;
 
 	issue_reset = 0;
 
@@ -679,8 +680,10 @@ _ctl_do_mpt_command(struct MPT2SAS_ADAPTER *ioc, struct mpt2_ioctl_command karg,
 		goto out;
 	}
 
+	mf_size = karg.data_sge_offset * 4;
+
 	/* copy in request message frame from user */
-	if (copy_from_user(mpi_request, mf, karg.data_sge_offset*4)) {
+	if (copy_from_user(mpi_request, mf, mf_size)) {
 		printk(KERN_ERR "failure at %s:%d/%s()!\n", __FILE__, __LINE__,
 		    __func__);
 		ret = -EFAULT;
@@ -710,7 +713,7 @@ _ctl_do_mpt_command(struct MPT2SAS_ADAPTER *ioc, struct mpt2_ioctl_command karg,
 	ioc->ctl_cmds.status = MPT2_CMD_PENDING;
 	memset(ioc->ctl_cmds.reply, 0, ioc->reply_sz);
 	request = mpt2sas_base_get_msg_frame(ioc, smid);
-	memcpy(request, mpi_request, karg.data_sge_offset*4);
+	memcpy(request, mpi_request, mf_size);
 	ioc->ctl_cmds.smid = smid;
 	data_out_sz = karg.data_out_size;
 	data_in_sz = karg.data_in_size;
@@ -760,7 +763,7 @@ _ctl_do_mpt_command(struct MPT2SAS_ADAPTER *ioc, struct mpt2_ioctl_command karg,
 	}
 
 	/* add scatter gather elements */
-	psge = (void *)request + (karg.data_sge_offset*4);
+	psge = (void *)request + mf_size;
 
 	if (!data_out_sz && !data_in_sz) {
 		mpt2sas_base_build_zero_len_sge(ioc, psge);

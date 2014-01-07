@@ -1082,7 +1082,7 @@ _scsih_build_scatter_gather(struct MPT2SAS_ADAPTER *ioc,
 	if (sges_left < 0) {
 		sdev_printk(KERN_ERR, scmd->device, "pci_map_sg"
 		" failed: request for %d bytes!\n", scsi_bufflen(scmd));
-		return -ENOMEM;
+		return sges_left;
 	}
 
 	sg_local = &mpi_request->SGL;
@@ -4938,7 +4938,7 @@ _scsih_expander_add(struct MPT2SAS_ADAPTER *ioc, u16 handle)
 	if (!sas_expander) {
 		printk(MPT2SAS_ERR_FMT "failure at %s:%d/%s()!\n",
 		    ioc->name, __FILE__, __LINE__, __func__);
-		return -1;
+		return -ENOMEM;
 	}
 
 	sas_expander->handle = handle;
@@ -5284,7 +5284,7 @@ _scsih_add_device(struct MPT2SAS_ADAPTER *ioc, u16 handle, u8 phy_num, u8 is_pd)
 	if (!sas_device) {
 		printk(MPT2SAS_ERR_FMT "failure at %s:%d/%s()!\n",
 		    ioc->name, __FILE__, __LINE__, __func__);
-		return -1;
+		return -ENOMEM;
 	}
 
 	sas_device->handle = handle;
