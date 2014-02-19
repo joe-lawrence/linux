@@ -2873,6 +2873,7 @@ probe_failed:
 	qla2x00_free_device(base_vha);
 
 	scsi_host_put(base_vha->host);
+	pci_set_drvdata(pdev, NULL);
 
 probe_hw_failed:
 	qla2x00_clear_drv_active(ha);
@@ -3052,14 +3053,31 @@ qla2x00_remove_one(struct pci_dev *pdev)
 	struct qla_hw_data  *ha;
 
 	/*
-	 * If the PCI device is disabled that means that probe failed and any
-	 * resources should be have cleaned up on probe exit.
+	 * If the PCI device has no driver-specific data that means that probe
+	 * failed and any resources should be have cleaned up on probe exit.
 	 */
-	if (!atomic_read(&pdev->enable_cnt))
+	base_vha = pci_get_drvdata(pdev);
+	if (!base_vha)
 		return;
 
-	base_vha = pci_get_drvdata(pdev);
 	ha = base_vha->hw;
+
+	/* Disable timer and any active board_disable work. */
+	if (base_vha->timer_active)
+		qla2x00_stop_timer(base_vha);
+	cancel_work_sync(&ha->board_disable);
+
+	/*
+	 * If the PCI device is disabled (with driver-specific data) then
+	 * there was a PCI bus error and qla2x00_disable_board_on_pci_error
+	 * has taken care of most of the resources.
+	 */
+	if (!atomic_read(&pdev->enable_cnt)) {
+		scsi_host_put(base_vha->host);
+		kfree(ha);
+		pci_set_drvdata(pdev, NULL);
+		return;
+	}
 
 	set_bit(UNLOADING, &base_vha->dpc_flags);
 
@@ -3081,10 +3099,6 @@ qla2x00_remove_one(struct pci_dev *pdev)
 	qla2x00_dfs_remove(base_vha);
 
 	qla84xx_put_chip(base_vha);
-
-	/* Disable timer */
-	if (base_vha->timer_active)
-		qla2x00_stop_timer(base_vha);
 
 	base_vha->flags.online = 0;
 
@@ -4710,18 +4724,15 @@ qla2x00_disable_board_on_pci_error(struct work_struct *work)
 	qla82xx_md_free(base_vha);
 	qla2x00_free_queues(ha);
 
-	scsi_host_put(base_vha->host);
-
 	qla2x00_unmap_iobases(ha);
 
 	pci_release_selected_regions(ha->pdev, ha->bars);
-	kfree(ha);
-	ha = NULL;
-
 	pci_disable_pcie_error_reporting(pdev);
 	pci_disable_device(pdev);
-	pci_set_drvdata(pdev, NULL);
 
+	/*
+	 * Let qla2x00_remove_one cleanup qla_hw_data on device removal.
+	 */
 }
 
 /**************************************************************************
