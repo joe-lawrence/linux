@@ -1063,6 +1063,10 @@ qla24xx_reset_risc(scsi_qla_host_t *vha)
 	for (cnt = 6000000 ; cnt && (d2 & CSRX_ISP_SOFT_RESET); cnt--) {
 		udelay(5);
 		d2 = RD_REG_DWORD(&reg->ctrl_status);
+		if (qla2x00_check_reg32_for_disconnect(vha, d2)) {
+pr_err("%s:%d disconnect!\n", __func__, __LINE__);
+			goto exit;
+		}
 		barrier();
 	}
 
@@ -1096,9 +1100,13 @@ qla24xx_reset_risc(scsi_qla_host_t *vha)
 	for (cnt = 6000000 ; cnt && d2; cnt--) {
 		udelay(5);
 		d2 = (uint32_t) RD_REG_WORD(&reg->mailbox0);
+		if (qla2x00_check_reg32_for_disconnect(vha, d2)) {
+pr_err("%s:%d disconnect!\n", __func__, __LINE__);
+			goto exit;
+		}
 		barrier();
 	}
-
+exit:
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	if (IS_NOPOLLING_TYPE(ha))

@@ -56,6 +56,12 @@ qla2x00_mailbox_command(scsi_qla_host_t *vha, mbx_cmd_t *mcp)
 		return QLA_FUNCTION_TIMEOUT;
 	}
 
+	if (test_bit(PCI_BUS_ERROR, &base_vha->dpc_flags)) {
+		ql_log(ql_log_warn, vha, 0x1188,
+		    "PCI Bus error, device disabled, exiting.\n");
+		return QLA_FUNCTION_TIMEOUT;
+	}
+
 	if (vha->device_flags & DFLG_DEV_FAILED) {
 		ql_log(ql_log_warn, vha, 0x1002,
 		    "Device in failed state, exiting.\n");

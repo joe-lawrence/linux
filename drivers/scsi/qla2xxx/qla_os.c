@@ -693,6 +693,14 @@ qla2xxx_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 		goto qc24_fail_command;
 	}
 
+	if (test_bit(PCI_BUS_ERROR, &base_vha->dpc_flags)) {
+		ql_log(ql_log_warn, vha, 0x1188,
+		    "PCI Bus error, device disabled, exiting cmd=%p\n",
+		    cmd);
+		cmd->result = DID_NO_CONNECT << 16;
+		goto qc24_fail_command;
+	}
+
 	rval = fc_remote_port_chkready(rport);
 	if (rval) {
 		cmd->result = rval;

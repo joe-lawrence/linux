@@ -1565,6 +1565,13 @@ qla24xx_start_scsi(srb_t *sp)
 
 	sp->flags |= SRB_DMA_VALID;
 
+{
+	scsi_qla_host_t *base_vha = pci_get_drvdata(ha->pdev);
+	if (test_bit(PCI_BUS_ERROR, &base_vha->dpc_flags)) {
+		pr_err("JL: %s:%d PCI_BUS_ERROR\n", __func__, __LINE__);
+	}
+}
+
 	/* Set chip new ring index. */
 	WRT_REG_DWORD(req->req_q_in, req->ring_index);
 	RD_REG_DWORD_RELAXED(&ha->iobase->isp24.hccr);
