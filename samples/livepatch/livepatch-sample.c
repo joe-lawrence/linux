@@ -25,26 +25,61 @@
 
 /*
  * This (dumb) live patch overrides the function that prints the
- * kernel boot cmdline when /proc/cmdline is read.
+ * kernel boot cmdline when /proc/cmdline is read.  It also
+ * demonstrates a contrived shadow-variable usage.
  *
  * Example:
  *
  * $ cat /proc/cmdline
  * <your cmdline>
+ * current=<current task pointer> count=<shadow variable counter>
  *
  * $ insmod livepatch-sample.ko
  * $ cat /proc/cmdline
  * this has been live patched
+ * current=ffff8800331c9540 count=1
+ * $ cat /proc/cmdline
+ * this has been live patched
+ * current=ffff8800331c9540 count=2
  *
  * $ echo 0 > /sys/kernel/livepatch/livepatch_sample/enabled
  * $ cat /proc/cmdline
  * <your cmdline>
  */
 
+static LIST_HEAD(shadow_list);
+
+struct new_data {
+	struct list_head list;
+	int count;
+};
+
 #include <linux/seq_file.h>
+#include <linux/slab.h>
 static int livepatch_cmdline_proc_show(struct seq_file *m, void *v)
 {
+	struct new_data *nd;
+
+	nd = klp_shadow_get(current, "new_data");
+	if (!nd) {
+		nd = kzalloc(sizeof(*nd), GFP_KERNEL);
+		if (nd) {
+			pr_info("Adding shadow variable @ %p (current=%p count=%d)\n",
+				nd, current, nd->count);
+			list_add(&nd->list, &shadow_list);
+			klp_shadow_attach(current, "new_data", GFP_KERNEL, nd);
+		}
+	}
+
 	seq_printf(m, "%s\n", "this has been live patched");
+
+	if (nd) {
+		nd->count++;
+		pr_info("Shadow variable @ %p (current=%p count=%d)\n",
+			nd, current, nd->count);
+		seq_printf(m, "current=%p count=%d\n", current, nd->count);
+	}
+
 	return 0;
 }
 
@@ -99,6 +134,14 @@ static int livepatch_init(void)
 
 static void livepatch_exit(void)
 {
+	struct new_data *nd, *tmp;
+
+	list_for_each_entry_safe(nd, tmp, &shadow_list, list) {
+		pr_info("Freeing shadow variable @ %p (count = %d)\n",
+			nd, nd->count);
+		list_del(&nd->list);
+		kfree(nd);
+	}
 	WARN_ON(klp_unregister_patch(&patch));
 }
 
