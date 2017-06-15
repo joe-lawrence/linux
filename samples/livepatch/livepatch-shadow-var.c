@@ -65,11 +65,10 @@ static int livepatch_cmdline_proc_show(struct seq_file *m, void *v)
 
 	ctr = klp_shadow_get(current, SV_TASK_CTR);
 	if (!ctr) {
-		ctr = kzalloc(sizeof(*ctr), GFP_KERNEL);
-		if (ctr) {
+		ctr = klp_shadow_attach(current, SV_TASK_CTR, NULL,
+			sizeof(*ctr), GFP_KERNEL);
+		if (ctr)
 			list_add(&ctr->list, &shadow_list);
-			klp_shadow_attach(current, SV_TASK_CTR, GFP_KERNEL, ctr);
-		}
 	}
 
 	seq_printf(m, "%s\n", "this has been live patched");

@@ -63,46 +63,50 @@ struct klp_shadow {
 	struct rcu_head rcu_head;
 	void *obj;
 	unsigned long key;
-	void *new_data;
+	char new_data[];
 };
+
+
+static void klp_shadow_add(struct klp_shadow *shadow, void *obj)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&klp_shadow_lock, flags);
+	hash_add_rcu(klp_shadow_hash, &shadow->node, (unsigned long)obj);
+	spin_unlock_irqrestore(&klp_shadow_lock, flags);
+}
 
 /**
  * klp_shadow_attach - allocate and attach a new shadow variable
  * @obj:	pointer to original data
  * @key:	key describing new data
- * @gfp:	GFP flags used to allocate shadow variable metadata
  * @new_data:	pointer to new data
+ * @new_size:   size of new data
+ * @gfp_mask:	GFP mask used to allocate shadow variable metadata
  *
  * Returns the shadow variable new_data element, NULL on failure.
  */
-void *klp_shadow_attach(void *obj, unsigned long key, gfp_t gfp,
-			void *new_data)
+void *klp_shadow_attach(void *obj, unsigned long key, void *new_data,
+			size_t new_size, gfp_t gfp_mask)
 {
-	unsigned long flags;
 	struct klp_shadow *shadow;
 
-	shadow = kmalloc(sizeof(*shadow), gfp);
+	shadow = kzalloc(sizeof(*shadow) + new_size, gfp_mask);
 	if (!shadow)
 		return NULL;
 
 	shadow->obj = obj;
 	shadow->key = key;
-	shadow->new_data = new_data;
+	if (new_data)
+		memcpy(shadow->new_data, new_data, new_size);
 
-	spin_lock_irqsave(&klp_shadow_lock, flags);
-	hash_add_rcu(klp_shadow_hash, &shadow->node, (unsigned long)obj);
-	spin_unlock_irqrestore(&klp_shadow_lock, flags);
+	klp_shadow_add(shadow, obj);
 
 	return shadow->new_data;
 }
 EXPORT_SYMBOL_GPL(klp_shadow_attach);
 
-/**
- * klp_shadow_detach - detach and free a shadow variable
- * @obj:	pointer to original data
- * @key:	key describing new data
- */
-void klp_shadow_detach(void *obj, unsigned long key)
+static struct klp_shadow *klp_shadow_del(void *obj, unsigned long key)
 {
 	unsigned long flags;
 	struct klp_shadow *shadow;
@@ -113,12 +117,26 @@ void klp_shadow_detach(void *obj, unsigned long key)
 			       (unsigned long)obj) {
 		if (shadow->obj == obj && shadow->key == key) {
 			hash_del_rcu(&shadow->node);
-			kfree_rcu(shadow, rcu_head);
-			break;
+			return shadow;
 		}
 	}
 
 	spin_unlock_irqrestore(&klp_shadow_lock, flags);
+	return NULL;
+}
+
+/**
+ * klp_shadow_detach - detach and free a shadow variable
+ * @obj:	pointer to original data
+ * @key:	key describing new data
+ */
+void klp_shadow_detach(void *obj, unsigned long key)
+{
+	struct klp_shadow *shadow;
+
+	shadow = klp_shadow_del(obj, key);
+	if (shadow)
+		kfree_rcu(shadow, rcu_head);
 }
 EXPORT_SYMBOL_GPL(klp_shadow_detach);
 
