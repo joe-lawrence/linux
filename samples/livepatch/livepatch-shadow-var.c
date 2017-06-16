@@ -50,10 +50,7 @@
 
 #define SV_TASK_CTR	(1)
 
-static LIST_HEAD(shadow_list);
-
 struct task_ctr {
-	struct list_head list;
 	int count;
 };
 
@@ -61,15 +58,13 @@ struct task_ctr {
 #include <linux/slab.h>
 static int livepatch_cmdline_proc_show(struct seq_file *m, void *v)
 {
+	struct task_ctr ctr_init;
 	struct task_ctr *ctr;
 
-	ctr = klp_shadow_get(current, SV_TASK_CTR);
-	if (!ctr) {
-		ctr = klp_shadow_attach(current, SV_TASK_CTR, NULL,
-			sizeof(*ctr), GFP_KERNEL);
-		if (ctr)
-			list_add(&ctr->list, &shadow_list);
-	}
+	ctr_init.count = 123;
+
+	ctr = klp_shadow_get_or_attach(current, SV_TASK_CTR, &ctr_init,
+				       sizeof(*ctr), GFP_NOWAIT);
 
 	seq_printf(m, "%s\n", "this has been live patched");
 
@@ -132,12 +127,8 @@ static int livepatch_init(void)
 
 static void livepatch_exit(void)
 {
-	struct task_ctr *nd, *tmp;
+	klp_shadow_detach_all(SV_TASK_CTR);
 
-	list_for_each_entry_safe(nd, tmp, &shadow_list, list) {
-		list_del(&nd->list);
-		kfree(nd);
-	}
 	WARN_ON(klp_unregister_patch(&patch));
 }
 

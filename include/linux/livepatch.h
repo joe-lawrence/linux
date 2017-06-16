@@ -164,10 +164,42 @@ static inline bool klp_have_reliable_stack(void)
 	       IS_ENABLED(CONFIG_HAVE_RELIABLE_STACKTRACE);
 }
 
-void *klp_shadow_attach(void *obj, unsigned long key, void *new_data,
-			size_t new_size, gfp_t gfp_mask);
-void klp_shadow_detach(void *obj, unsigned long key);
-void *klp_shadow_get(void *obj, unsigned long key);
+/**
+ * struct klp_shadow - shadow variable structure
+ * @node:	klp_shadow_hash hash table node
+ * @rcu_head:	RCU is used to safely free this structure
+ * @obj:	pointer to original data
+ * @data:	numerical description of new data
+ * @new_data:	pointer to new data
+ */
+struct klp_shadow {
+	struct hlist_node node;
+	struct rcu_head rcu_head;
+	void *obj;
+	unsigned long data;
+	char new_data[];
+};
+
+typedef void *(*klp_shadow_acquire_obj_func_t)(void *obj, unsigned long data, void *new_data, size_t shadow_size, gfp_t gfp_flags);
+typedef void (*klp_shadow_retire_obj_func_t)(struct klp_shadow *);
+
+void *klp_shadow_get(void *obj, unsigned long data);
+void *klp_shadow_attach(void *obj, unsigned long data, void *new_data,
+			size_t new_size, gfp_t gfp_flags);
+void *klp_shadow_add(void *obj, unsigned long data, void *new_data,
+		     size_t new_size, gfp_t gfp_flags,
+		     klp_shadow_acquire_obj_func_t acquire_fn);
+void *klp_shadow_get_or_add(void *obj, unsigned long data, void *new_data,
+			    size_t new_size, gfp_t gfp_flags,
+			    klp_shadow_acquire_obj_func_t acquire_fn);
+void *klp_shadow_get_or_attach(void *obj, unsigned long data, void *new_data,
+			       size_t new_size, gfp_t gfp_flags);
+void klp_shadow_delete(void *obj, unsigned long data,
+			      klp_shadow_retire_obj_func_t shadow_retire_fn);
+void klp_shadow_delete_all(void *obj, unsigned long data,
+				  klp_shadow_retire_obj_func_t shadow_retire_fn);
+void klp_shadow_detach(void *obj, unsigned long data);
+void klp_shadow_detach_all(unsigned long data);
 
 #else /* !CONFIG_LIVEPATCH */
 
