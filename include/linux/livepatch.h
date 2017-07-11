@@ -87,10 +87,23 @@ struct klp_func {
 	bool transition;
 };
 
+struct klp_object;
+
+/**
+ * struct klp_hook - hook structure for live patching
+ * @hook:	function to be executed on hook
+ *
+ */
+struct klp_hook {
+	int (*hook)(struct klp_object *obj);
+};
+
 /**
  * struct klp_object - kernel object structure for live patching
  * @name:	module name (or NULL for vmlinux)
  * @funcs:	function entries for functions to be patched in the object
+ * @patch_hooks:	functions to be executed on patching
+ * @unpatch_hooks:	functions to be executed on unpatching
  * @kobj:	kobject for sysfs resources
  * @mod:	kernel module associated with the patched object
  *		(NULL for vmlinux)
@@ -100,12 +113,25 @@ struct klp_object {
 	/* external */
 	const char *name;
 	struct klp_func *funcs;
+	struct klp_hook *patch_hooks;
+	struct klp_hook *unpatch_hooks;
 
 	/* internal */
 	struct kobject kobj;
 	struct module *mod;
 	bool patched;
 };
+
+/**
+ * klp_is_module() - is klp_object a module?
+ * @obj:	klp_object pointer
+ *
+ * Return: true if klp_object is a loadable module
+ */
+static inline bool klp_is_module(struct klp_object *obj)
+{
+	return obj->name;
+}
 
 /**
  * struct klp_patch - patch structure for live patching
@@ -137,6 +163,12 @@ struct klp_patch {
 	for (func = obj->funcs; \
 	     func->old_name || func->new_func || func->old_sympos; \
 	     func++)
+
+#define klp_for_each_patch_hook(obj, hook) \
+	for (hook = obj->patch_hooks; hook && hook->hook; hook++)
+
+#define klp_for_each_unpatch_hook(obj, hook) \
+	for (hook = obj->unpatch_hooks; hook && hook->hook; hook++)
 
 int klp_register_patch(struct klp_patch *);
 int klp_unregister_patch(struct klp_patch *);

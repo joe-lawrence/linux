@@ -1,0 +1,98 @@
+(Un)patching Hooks
+==================
+
+Livepatching (un)patch-hooks provide a mechanism to register and execute
+a set of callback functions when the kernel's livepatching core performs
+an (un)patching operation on a given kernel object.
+
+The hooks are provided and registered by a livepatch module as part of
+klp_objects that make up its klp_patch structure.  Both patch and
+unpatch-hook function signatures accept a pointer to a klp_object
+argument and return an integer status, ie:
+
+  static int patch_hook(struct klp_object *obj)
+  {
+  	/* ... */
+  }
+  static int unpatch_hook(struct klp_object *obj)
+  {
+  	/* ... */
+  }
+
+  static struct klp_hook patch_hooks[] = {
+  	{
+  		.hook = patch_hook,
+  	}, { }
+  };
+  static struct klp_hook unpatch_hooks[] = {
+  	{
+  		.hook = unpatch_hook,
+  	}, { }
+  };
+
+  static struct klp_object objs[] = {
+  	{
+  		/* ... */
+  		.patch_hooks = patch_hooks,
+  		.unpatch_hooks = unpatch_hooks,
+  	}, { }
+  };
+
+  static struct klp_patch patch = {
+  	.mod = THIS_MODULE,
+  	.objs = objs,
+  };
+
+If a hook returns non-zero status, the livepatching core will log a
+hook failure warning message.
+
+Multiple (un)patch-hooks may be registered per klp_object.  Each hook
+will execute regardless of any previously executed hook's non-zero
+return status.
+
+Hooks are optional.  The livepatching core will not execute any
+callbacks for an empty klp_hook.hook array or a NULL klp_hook.hook
+value.
+
+
+For module targets
+------------------
+
+In the case of kernel module objects, patch-hooks provide a livepatch
+module opportunity to defer execution until a target module is loaded.
+Similarly, unpatch-hooks only call back into a livepatch module after a
+target module has itself cleaned up.  In these cases, the order of
+execution looks like:
+
+  load kernel module
+  execute all patch_hooks[] for this kernel object
+  livepatch kernel object
+  execute module_init function
+
+  ...
+
+  unload kernel module
+  execute module_exit function
+  livepatch restore kernel object
+  execute all unpatch_hooks[] for this kernel object
+
+On the other hand, if a target kernel module is already present when a
+livepatch is loading, then the corresponding patch hook(s) will execute
+as soon as the livepatching kernel core enables the livepatch.
+
+It may be useful for hooks to inspect the module state of the klp_object
+it is passed (i.e. obj->mod->state).  Patch hooks can expect to see
+modules in MODULE_STATE_LIVE and MODULE_STATE_COMING states.  Unpatch
+hooks can expect modules in MODULE_STATE_LIVE and MODULE_STATE_GOING
+states.
+
+
+For vmlinux target
+------------------
+
+As the kernel is always loaded, patch-hooks for vmlinux will execute as
+soon as the livepatch core enables the livepatch.  Patch-hooks will also
+run if the livepatch is disabled and then re-enabled.
+
+Unpatch-hooks for vmlinux will only execute when the livepatch is
+disabled.

@@ -235,24 +235,59 @@ err:
 	return ret;
 }
 
+/**
+ * klp_run_hook - execute a given klp_hook callback
+ * @hook:	callback hook
+ * @obj:	kernel object that has been hooked
+ *
+ * Return: return value from hook, or 0 if none is currently associated
+ */
+static int klp_run_hook(struct klp_hook *hook, struct klp_object *obj)
+{
+	if (hook && hook->hook)
+		return (*hook->hook)(obj);
+
+	return 0;
+}
+
 void klp_unpatch_object(struct klp_object *obj)
 {
 	struct klp_func *func;
+	struct klp_hook *hook;
+	int ret;
 
 	klp_for_each_func(obj, func)
 		if (func->patched)
 			klp_unpatch_func(func);
 
 	obj->patched = false;
+
+	klp_for_each_unpatch_hook(obj, hook) {
+		ret = klp_run_hook(hook, obj);
+		if (ret) {
+			pr_warn("unpatch hook '%p' failed for object '%s'\n",
+				hook, klp_is_module(obj) ? obj->name : "vmlinux");
+		}
+	}
+
 }
 
 int klp_patch_object(struct klp_object *obj)
 {
 	struct klp_func *func;
+	struct klp_hook *hook;
 	int ret;
 
 	if (WARN_ON(obj->patched))
 		return -EINVAL;
+
+	klp_for_each_patch_hook(obj, hook) {
+		ret = klp_run_hook(hook, obj);
+		if (ret) {
+			pr_warn("patch hook '%p' failed for object '%s'\n",
+				hook, klp_is_module(obj) ? obj->name : "vmlinux");
+		}
+	}
 
 	klp_for_each_func(obj, func) {
 		ret = klp_patch_func(func);

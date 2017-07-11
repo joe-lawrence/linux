@@ -49,11 +49,6 @@ static LIST_HEAD(klp_patches);
 
 static struct kobject *klp_root_kobj;
 
-static bool klp_is_module(struct klp_object *obj)
-{
-	return obj->name;
-}
-
 static bool klp_is_object_loaded(struct klp_object *obj)
 {
 	return !obj->name || obj->mod;
