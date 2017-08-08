@@ -87,10 +87,25 @@ struct klp_func {
 	bool transition;
 };
 
+struct klp_object;
+
+/**
+ * struct klp_callback - callback structure for live patching
+ * @callback:	function to be executed on callback
+ *
+ */
+struct klp_callbacks {
+	int (*pre_patch)(struct klp_object *obj);
+	void (*post_patch)(struct klp_object *obj);
+	void (*pre_unpatch)(struct klp_object *obj);
+	void (*post_unpatch)(struct klp_object *obj);
+};
+
 /**
  * struct klp_object - kernel object structure for live patching
  * @name:	module name (or NULL for vmlinux)
  * @funcs:	function entries for functions to be patched in the object
+ * @callbacks:	functions to be executed pre/post (un)patching
  * @kobj:	kobject for sysfs resources
  * @mod:	kernel module associated with the patched object
  *		(NULL for vmlinux)
@@ -100,6 +115,7 @@ struct klp_object {
 	/* external */
 	const char *name;
 	struct klp_func *funcs;
+	struct klp_callbacks callbacks;
 
 	/* internal */
 	struct kobject kobj;
@@ -137,6 +153,28 @@ struct klp_patch {
 	for (func = obj->funcs; \
 	     func->old_name || func->new_func || func->old_sympos; \
 	     func++)
+
+static inline int klp_pre_patch_callback(struct klp_object *obj)
+{
+	if (!obj->patched && obj->callbacks.pre_patch)
+		return (*obj->callbacks.pre_patch)(obj);
+	return 0;
+}
+static inline void klp_post_patch_callback(struct klp_object *obj)
+{
+	if (obj->patched && obj->callbacks.post_patch)
+		(*obj->callbacks.post_patch)(obj);
+}
+static inline void klp_pre_unpatch_callback(struct klp_object *obj)
+{
+	if (obj->patched && obj->callbacks.pre_unpatch)
+		(*obj->callbacks.pre_unpatch)(obj);
+}
+static inline void klp_post_unpatch_callback(struct klp_object *obj)
+{
+	if (!obj->patched && obj->callbacks.post_unpatch)
+		(*obj->callbacks.post_unpatch)(obj);
+}
 
 int klp_register_patch(struct klp_patch *);
 int klp_unregister_patch(struct klp_patch *);

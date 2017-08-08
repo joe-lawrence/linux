@@ -1,0 +1,75 @@
+(Un)patching Callbacks
+======================
+
+Livepatch (un)patch-callbacks provide a mechanism for livepatch modules
+to execute callback functions when a kernel object is (un)patched.
+
+These callbacks differ from existing kernel facilities:
+
+  - Module init/exit code doesn't run when disabling and re-enabling a
+    patch.
+
+  - A module notifier can't stop the to-be-patched module from loading.
+
+Callbacks are part of the klp_object structure and their implementation
+is specific to the given object.  Other livepatch objects may or may not
+be patched, irrespective of the target klp_object's current state.
+
+Callbacks can be registered for the following livepatch actions:
+
+  * Pre-patch    - before klp_object is patched
+
+  * Post-patch   - after klp_object has been patched and is active
+                   across all tasks
+
+  * Pre-unpatch  - before klp_object is unpatched, patched code is active
+
+  * Post-unpatch - after klp_object has been patched, all code has been
+		   restored and no tasks are running patched code
+
+Callbacks are only executed if its host klp_object is loaded.  For
+in-kernel vmlinux targets, this means that callbacks will always execute
+when a livepatch is enabled/disabled.
+
+For kernel module targets, callbacks will only execute if the target
+module is loaded.  When a kernel module target is (un)loaded, its
+callbacks will execute only if the livepatch module is enabled.
+
+The pre-patch callback is expected to return a status code (0 for
+success, -ERRNO on error).  An error status code will indicate to the
+livepatching core that patching of the current klp_object is not safe
+and to stop the current patching request.  If the problematic klp_object
+is already loaded (i.e. a livepatch is loaded after target code), the
+kernel's module loader will refuse to load the livepatch.  On the other
+hand, if the problematic klp_object is already in place (i.e. a target
+module is loaded after a livepatch), then the module loader will refuse
+to load the target kernel module.
+
+
+Example Use-cases
+-----------------
+
+1 - Update global data
+
+A pre-patch callback can be useful to update a global variable.  For
+example, 75ff39ccc1bd ("tcp: make challenge acks less predictable")
+changes a global sysctl, as well as patches the tcp_send_challenge_ack()
+function.
+
+In this case, if we're being super paranoid, it might make sense to
+patch the data *after* patching is complete with a post-patch callback,
+so that tcp_send_challenge_ack() could first be changed to read
+sysctl_tcp_challenge_ack_limit with READ_ONCE.
+
+
+2 - Support __init and probe function patches
+
+Although __init and probe functions are not directly livepatch-able, it
+may be possible to implement similar updates via pre/post-patch
+callbacks.
+
+48900cb6af42 ("virtio-net: drop NETIF_F_FRAGLIST") change the way that
+virtnet_probe() initialized its driver's net_device features.  A
+pre/post-patch callback could iterate over all such devices, making a
+similar change to their hw_features value.  (Client functions of the
+value may need to be updated accordingly.)

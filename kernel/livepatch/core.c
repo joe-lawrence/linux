@@ -388,13 +388,18 @@ static int __klp_enable_patch(struct klp_patch *patch)
 		if (!klp_is_object_loaded(obj))
 			continue;
 
+		ret = klp_pre_patch_callback(obj);
+		if (ret) {
+			pr_warn("pre-patch callback failed for object '%s'\n",
+				klp_is_module(obj) ? obj->name : "vmlinux");
+			goto err;
+		}
+
 		ret = klp_patch_object(obj);
 		if (ret) {
-			pr_warn("failed to enable patch '%s'\n",
-				patch->mod->name);
-
-			klp_cancel_transition();
-			return ret;
+			pr_warn("failed to patch object '%s'\n",
+				klp_is_module(obj) ? obj->name : "vmlinux");
+			goto err;
 		}
 	}
 
@@ -403,6 +408,11 @@ static int __klp_enable_patch(struct klp_patch *patch)
 	patch->enabled = true;
 
 	return 0;
+err:
+	pr_warn("failed to enable patch '%s'\n", patch->mod->name);
+
+	klp_cancel_transition();
+	return ret;
 }
 
 /**
@@ -871,12 +881,21 @@ int klp_module_coming(struct module *mod)
 			pr_notice("applying patch '%s' to loading module '%s'\n",
 				  patch->mod->name, obj->mod->name);
 
+			ret = klp_pre_patch_callback(obj);
+			if (ret) {
+				pr_warn("pre-patch callback failed for object '%s'\n",
+					obj->name);
+				goto err;
+			}
+
 			ret = klp_patch_object(obj);
 			if (ret) {
 				pr_warn("failed to apply patch '%s' to module '%s' (%d)\n",
 					patch->mod->name, obj->mod->name, ret);
 				goto err;
 			}
+
+			klp_post_patch_callback(obj);
 
 			break;
 		}
@@ -929,7 +948,10 @@ void klp_module_going(struct module *mod)
 			if (patch->enabled || patch == klp_transition_patch) {
 				pr_notice("reverting patch '%s' on unloading module '%s'\n",
 					  patch->mod->name, obj->mod->name);
+
+				klp_pre_unpatch_callback(obj);
 				klp_unpatch_object(obj);
+				klp_post_unpatch_callback(obj);
 			}
 
 			klp_free_object_loaded(obj);

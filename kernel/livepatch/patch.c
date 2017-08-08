@@ -257,6 +257,7 @@ int klp_patch_object(struct klp_object *obj)
 	klp_for_each_func(obj, func) {
 		ret = klp_patch_func(func);
 		if (ret) {
+			klp_pre_unpatch_callback(obj);
 			klp_unpatch_object(obj);
 			return ret;
 		}
@@ -271,6 +272,8 @@ void klp_unpatch_objects(struct klp_patch *patch)
 	struct klp_object *obj;
 
 	klp_for_each_object(patch, obj)
-		if (obj->patched)
+		if (obj->patched) {
+			klp_pre_unpatch_callback(obj);
 			klp_unpatch_object(obj);
+		}
 }
