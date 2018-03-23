@@ -45,6 +45,11 @@
  */
 DEFINE_MUTEX(klp_mutex);
 
+/*
+ * Stack of patches. It defines the order in which the patches can be enabled.
+ * Only patches on this stack might be enabled. New patches are added when
+ * registered. They are removed when they are unregistered.
+ */
 static LIST_HEAD(klp_patches);
 
 static struct kobject *klp_root_kobj;
@@ -97,7 +102,7 @@ static void klp_find_object_module(struct klp_object *obj)
 	mutex_unlock(&module_mutex);
 }
 
-static bool klp_is_patch_registered(struct klp_patch *patch)
+static bool klp_is_patch_on_stack(struct klp_patch *patch)
 {
 	struct klp_patch *mypatch;
 
@@ -378,7 +383,7 @@ int klp_disable_patch(struct klp_patch *patch)
 
 	mutex_lock(&klp_mutex);
 
-	if (!klp_is_patch_registered(patch)) {
+	if (!patch->registered) {
 		ret = -EINVAL;
 		goto err;
 	}
@@ -407,7 +412,11 @@ static int __klp_enable_patch(struct klp_patch *patch)
 	if (WARN_ON(patch->enabled))
 		return -EINVAL;
 
-	/* enforce stacking: only the first disabled patch can be enabled */
+	/* Enforce stacking. */
+	if (!klp_is_patch_on_stack(patch))
+		return -EINVAL;
+
+	/* Only the first disabled patch can be enabled. */
 	if (patch->list.prev != &klp_patches &&
 	    !list_prev_entry(patch, list)->enabled)
 		return -EBUSY;
@@ -478,7 +487,7 @@ int klp_enable_patch(struct klp_patch *patch)
 
 	mutex_lock(&klp_mutex);
 
-	if (!klp_is_patch_registered(patch)) {
+	if (!patch->registered) {
 		ret = -EINVAL;
 		goto err;
 	}
@@ -519,7 +528,7 @@ static ssize_t enabled_store(struct kobject *kobj, struct kobj_attribute *attr,
 
 	mutex_lock(&klp_mutex);
 
-	if (!klp_is_patch_registered(patch)) {
+	if (!patch->registered) {
 		/*
 		 * Module with the patch could either disappear meanwhile or is
 		 * not properly initialized yet.
@@ -527,6 +536,7 @@ static ssize_t enabled_store(struct kobject *kobj, struct kobj_attribute *attr,
 		ret = -EINVAL;
 		goto err;
 	}
+
 
 	if (patch->enabled == enabled) {
 		/* already in requested state */
@@ -1004,6 +1014,7 @@ static int klp_init_patch(struct klp_patch *patch)
 	}
 
 	list_add_tail(&patch->list, &klp_patches);
+	patch->registered = true;
 
 	mutex_unlock(&klp_mutex);
 
@@ -1034,7 +1045,7 @@ int klp_unregister_patch(struct klp_patch *patch)
 
 	mutex_lock(&klp_mutex);
 
-	if (!klp_is_patch_registered(patch)) {
+	if (!patch->registered) {
 		ret = -EINVAL;
 		goto err;
 	}
@@ -1045,6 +1056,7 @@ int klp_unregister_patch(struct klp_patch *patch)
 	}
 
 	klp_free_patch(patch);
+	patch->registered = false;
 
 	mutex_unlock(&klp_mutex);
 

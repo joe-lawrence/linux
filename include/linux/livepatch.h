@@ -150,6 +150,7 @@ struct klp_object {
  * @list:	list node for global list of registered patches
  * @kobj:	kobject for sysfs resources
  * @obj_list:	dynamic list of the object entries
+ * @registered: reliable way to check registration status
  * @enabled:	the patch is enabled (but operation may be incomplete)
  * @finish:	for waiting till it is safe to remove the patch module
  */
@@ -163,6 +164,7 @@ struct klp_patch {
 	struct list_head list;
 	struct kobject kobj;
 	struct list_head obj_list;
+	bool registered;
 	bool enabled;
 	struct completion finish;
 };
