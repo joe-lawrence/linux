@@ -355,11 +355,13 @@ void klp_discard_replaced_patches(struct klp_patch *new_patch, bool keep_module)
 		if (old_patch == new_patch)
 			return;
 
-		klp_unpatch_objects(old_patch);
-		old_patch->enabled = false;
+		if (old_patch->enabled) {
+			klp_unpatch_objects(old_patch);
+			old_patch->enabled = false;
 
-		if (!keep_module)
-			module_put(old_patch->mod);
+			if (!keep_module)
+				module_put(old_patch->mod);
+		}
 
 		/*
 		 * Replaced patches could not get re-enabled to keep
@@ -453,8 +455,13 @@ static int __klp_enable_patch(struct klp_patch *patch)
 	if (!klp_is_patch_on_stack(patch))
 		return -EINVAL;
 
-	/* Only the first disabled patch can be enabled. */
-	if (patch->list.prev != &klp_patches &&
+	/*
+	 * Only the first disabled patch can be enabled. This is not required
+	 * for patches with the replace flags. They override even disabled
+	 * patches that were registered earlier.
+	 */
+	if (!patch->replace &&
+	    patch->list.prev != &klp_patches &&
 	    !list_prev_entry(patch, list)->enabled)
 		return -EBUSY;
 
