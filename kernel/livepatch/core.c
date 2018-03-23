@@ -852,11 +852,20 @@ static struct kobj_type klp_ktype_func = {
 	.sysfs_ops = &kobj_sysfs_ops,
 };
 
-static void klp_free_funcs(struct klp_object *obj)
+static void __klp_free_funcs(struct klp_object *obj, bool free_all)
 {
-	struct klp_func *func;
+	struct klp_func *func, *tmp_func;
 
-	klp_for_each_func(obj, func) {
+	klp_for_each_func_safe(obj, func, tmp_func) {
+		if (!free_all && !func->nop)
+			continue;
+
+		/*
+		 * Avoid double free. It would be tricky to wait for kobject
+		 * callbacks when only NOPs are handled.
+		 */
+		list_del(&func->node);
+
 		/* Might be called from klp_init_patch() error path. */
 		if (func->kobj.state_initialized)
 			kobject_put(&func->kobj);
@@ -880,12 +889,21 @@ static void klp_free_object_loaded(struct klp_object *obj)
 	}
 }
 
-static void klp_free_objects(struct klp_patch *patch)
+static void __klp_free_objects(struct klp_patch *patch, bool free_all)
 {
-	struct klp_object *obj;
+	struct klp_object *obj, *tmp_obj;
 
-	klp_for_each_object(patch, obj) {
-		klp_free_funcs(obj);
+	klp_for_each_object_safe(patch, obj, tmp_obj) {
+		__klp_free_funcs(obj, free_all);
+
+		if (!free_all && !obj->dynamic)
+			continue;
+
+		/*
+		 * Avoid double free. It would be tricky to wait for kobject
+		 * callbacks when only dynamic objects are handled.
+		 */
+		list_del(&obj->node);
 
 		/* Might be called from klp_init_patch() error path. */
 		if (obj->kobj.state_initialized)
@@ -893,6 +911,16 @@ static void klp_free_objects(struct klp_patch *patch)
 		else if (obj->dynamic)
 			klp_free_object_dynamic(obj);
 	}
+}
+
+static void klp_free_objects(struct klp_patch *patch)
+{
+	__klp_free_objects(patch, true);
+}
+
+void klp_free_objects_dynamic(struct klp_patch *patch)
+{
+	__klp_free_objects(patch, false);
 }
 
 static void klp_free_patch(struct klp_patch *patch)

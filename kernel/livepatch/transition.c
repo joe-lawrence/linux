@@ -87,8 +87,17 @@ static void klp_complete_transition(void)
 		 klp_transition_patch->mod->name,
 		 klp_target_state == KLP_PATCHED ? "patching" : "unpatching");
 
-	if (klp_transition_patch->replace && klp_target_state == KLP_PATCHED)
+	if (klp_transition_patch->replace && klp_target_state == KLP_PATCHED) {
 		klp_discard_replaced_patches(klp_transition_patch, klp_forced);
+
+		/*
+		 * There is no need to synchronize the transition after removing
+		 * nops. They must be the last on the func_stack. Ftrace
+		 * guarantees that nobody will stay in the trampoline after
+		 * the ftrace handler is unregistered.
+		 */
+		klp_unpatch_objects_dynamic(klp_transition_patch);
+	}
 
 	if (klp_target_state == KLP_UNPATCHED) {
 		/*
@@ -145,6 +154,21 @@ static void klp_complete_transition(void)
 	 */
 	if (!klp_forced && klp_target_state == KLP_UNPATCHED)
 		module_put(klp_transition_patch->mod);
+
+	if (klp_transition_patch->replace && klp_target_state == KLP_PATCHED) {
+		/*
+		 * We do not need to wait until the objects are really freed.
+		 * We will never need them again because the patch must be on
+		 * the bottom of the stack now.
+		 */
+		klp_free_objects_dynamic(klp_transition_patch);
+		/*
+		 * Replace behavior will not longer be needed. Avoid the related
+		 * code when disabling and enabling again.
+		 */
+		klp_transition_patch->replace = false;
+	}
+
 
 	klp_target_state = KLP_UNDEFINED;
 	klp_transition_patch = NULL;
