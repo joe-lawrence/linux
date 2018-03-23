@@ -332,6 +332,43 @@ static int klp_write_object_relocations(struct module *pmod,
 	return ret;
 }
 
+/*
+ * This function removes replaced patches from both func_stack
+ * and klp_patches stack.
+ *
+ * We could be pretty aggressive here. It is called in the situation where
+ * these structures are no longer accessible. All functions are redirected
+ * by the klp_transition_patch. They use either a new code or they are in
+ * the original code because of the special nop function patches.
+ *
+ * The only exception is when the transition was forced. In this case,
+ * klp_ftrace_handler() might still see the replaced patch on the stack.
+ * Fortunately, it is carefully designed to work with removed functions
+ * thanks to RCU. We only have to keep the patches on the system. This
+ * is handled by @keep_module parameter.
+ */
+void klp_discard_replaced_patches(struct klp_patch *new_patch, bool keep_module)
+{
+	struct klp_patch *old_patch, *tmp_patch;
+
+	list_for_each_entry_safe(old_patch, tmp_patch, &klp_patches, list) {
+		if (old_patch == new_patch)
+			return;
+
+		klp_unpatch_objects(old_patch);
+		old_patch->enabled = false;
+
+		if (!keep_module)
+			module_put(old_patch->mod);
+
+		/*
+		 * Replaced patches could not get re-enabled to keep
+		 * the code sane.
+		 */
+		list_del_init(&old_patch->list);
+	}
+}
+
 static int __klp_disable_patch(struct klp_patch *patch)
 {
 	struct klp_object *obj;
