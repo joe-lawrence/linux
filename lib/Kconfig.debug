@@ -1932,6 +1932,18 @@ config TEST_DEBUG_VIRTUAL
 
 	  If unsure, say N.
 
+config TEST_LIVEPATCH
+	tristate "Test livepatching"
+	default n
+	depends on LIVEPATCH
+	depends on m
+	help
+	  Test various kernel livepatching features for correctness.
+	  The tests will load test modules that will be livepatched
+	  in various scenarios.
+
+	  If unsure, say N.
+
 endif # RUNTIME_TESTING_MENU
 
 config MEMTEST
