@@ -310,6 +310,7 @@ static struct ctl_table *sd_alloc_ctl_cpu_table(int cpu)
 
 static cpumask_var_t		sd_sysctl_cpus;
 static struct ctl_table_header	*sd_sysctl_header;
+static int register_sched_domain_sysctl_on_boot = 1;
 
 void register_sched_domain_sysctl(void)
 {
@@ -344,9 +345,12 @@ void register_sched_domain_sysctl(void)
 	if (!cpumask_available(sd_sysctl_cpus)) {
 		if (!alloc_cpumask_var(&sd_sysctl_cpus, GFP_KERNEL))
 			return;
+	}
 
+	if (register_sched_domain_sysctl_on_boot) {
 		/* init to possible to not have holes in @cpu_entries */
 		cpumask_copy(sd_sysctl_cpus, cpu_possible_mask);
+		register_sched_domain_sysctl_on_boot = 0;
 	}
 
 	for_each_cpu(i, sd_sysctl_cpus) {
