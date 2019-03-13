@@ -89,6 +89,7 @@ static bool load_syms_lists(const char *symbols_list)
 	}
 
 	len = 0;
+	free(sym);
 	sym = NULL;
 
 	/* read file */
@@ -192,6 +193,12 @@ static void clear_sympos_annontations(struct elf *klp_elf)
 			continue;
 		}
 		if (strncmp(sec->name, ".rela.klp.module_relocs.", 24) == 0) {
+
+			struct rela *rela, *tmprela;
+			list_for_each_entry_safe(rela, tmprela, &sec->relas, list) {
+				list_del(&rela->list);
+				free(rela);
+			}
 			list_del(&sec->list);
 			free(sec);
 			continue;
@@ -565,6 +572,38 @@ static bool must_convert(struct symbol *sym)
 	return (!(is_converted(sym->name) || is_exported(sym->name)));
 }
 
+/* Checks if a section is a klp rela section */
+static bool is_klp_rela_section(char *sname)
+{
+	int len = strlen(KLP_RELA_PREFIX);
+
+	if (strncmp(sname, KLP_RELA_PREFIX, len) == 0)
+		return true;
+	return false;
+}
+
+/*
+ * Frees the new names and rela sections as created by convert_rela()
+ */
+static void free_converted_resources(struct elf *klp_elf)
+{
+	struct symbol *sym;
+	struct section *sec;
+
+	list_for_each_entry(sym, &klp_elf->symbols, list) {
+		if (sym->name && is_converted(sym->name)) {
+			free(sym->name);
+		}
+	}
+
+	list_for_each_entry(sec, &klp_elf->sections, list) {
+		if (is_klp_rela_section(sec->name)) {
+			free(sec->elf_data);
+			free(sec->name);
+		}
+	}
+}
+
 int main(int argc, const char **argv)
 {
 	const char *klp_in_module, *klp_out_module, *symbols_list;
@@ -618,6 +657,9 @@ int main(int argc, const char **argv)
 	free_syms_lists();
 	if (elf_write_file(klp_elf, klp_out_module))
 		return -1;
+
+	free_converted_resources(klp_elf);
+	elf_close(klp_elf);
 
 	return 0;
 }
