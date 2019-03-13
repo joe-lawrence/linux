@@ -2,6 +2,11 @@
 #
 # Makefile for livepatch test code.
 
+LIVEPATCH_test_klp_atomic_replace.o := y
+LIVEPATCH_test_klp_callbacks_demo.o := y
+LIVEPATCH_test_klp_callbacks_demo2.o := y
+LIVEPATCH_test_klp_livepatch.o := y
+
 obj-$(CONFIG_TEST_LIVEPATCH) += test_klp_atomic_replace.o \
 				test_klp_callbacks_demo.o \
 				test_klp_callbacks_demo2.o \
