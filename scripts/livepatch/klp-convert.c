@@ -644,7 +644,8 @@ int main(int argc, const char **argv)
 				continue;
 
 			if (!find_missing_position(rela->sym, &sp)) {
-				WARN("Unable to find missing symbol");
+				WARN("Unable to find missing symbol: %s",
+					rela->sym->name);
 				return -1;
 			}
 			if (!convert_rela(sec, rela, &sp, klp_elf)) {
