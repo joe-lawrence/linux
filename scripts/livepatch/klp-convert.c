@@ -147,6 +147,19 @@ static void clear_sympos_symbols(struct section *sec, struct elf *klp_elf)
 
 	list_for_each_entry_safe(sym, aux, &klp_elf->symbols, list) {
 		if (sym->sec == sec) {
+
+			struct section *sec;
+			struct rela *rela, *tmprela;
+
+			list_for_each_entry(sec, &klp_elf->sections, list) {
+				list_for_each_entry_safe(rela, tmprela, &sec->relas, list) {
+					if (rela->sym == sym) {
+						list_del(&rela->list);
+						free(rela);
+					}
+				}
+			}
+
 			list_del(&sym->list);
 			free(sym);
 		}
