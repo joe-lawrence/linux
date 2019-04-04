@@ -272,7 +272,8 @@ Livepatch symbol names must conform to the following format:
 [D] The position of the symbol in the object (as according to kallsyms)
     This is used to differentiate duplicate symbols within the same
     object. The symbol position is expressed numerically (0, 1, 2...).
-    The symbol position of a unique symbol is 0.
+    The symbol position of a unique symbol is 0.  The symbol position of
+    the first non-unique symbol is 1, the second is 2, etc.
 
 3.3.3 Example livepatch symbol names:
 -------------------------------------
