@@ -315,19 +315,49 @@ static struct symbol_entry *find_sym_entry_by_name(char *name)
 static bool valid_sympos(struct sympos *sp)
 {
 	struct symbol_entry *e;
-	int counter = 0;
 
-	list_for_each_entry(e, &symbols, list) {
-		if ((strcmp(e->symbol_name, sp->symbol_name) == 0) &&
-		    (strcmp(e->object_name, sp->object_name) == 0)) {
-			if (counter == sp->pos)
-				return true;
-			counter++;
+	if (sp->pos == 0) {
+
+		/*
+		 * sympos of 0 is reserved for uniquely named obj:sym,
+		 * verify that this is the case
+		 */
+		int counter = 0;
+
+		list_for_each_entry(e, &symbols, list) {
+			if ((strcmp(e->symbol_name, sp->symbol_name) == 0) &&
+			    (strcmp(e->object_name, sp->object_name) == 0)) {
+				counter++;
+			}
 		}
+		if (counter == 1)
+			return true;
+
+		WARN("Provided KLP_SYMPOS of 0, but found %d symbols matching: %s.%s,%d",
+				counter, sp->object_name, sp->symbol_name,
+				sp->pos);
+
+	} else {
+
+		/*
+		 * sympos > 0 indicates a specific commonly-named obj:sym,
+		 * indexing starts with 1
+		 */
+		int index = 1;
+
+		list_for_each_entry(e, &symbols, list) {
+			if ((strcmp(e->symbol_name, sp->symbol_name) == 0) &&
+			    (strcmp(e->object_name, sp->object_name) == 0)) {
+				if (index == sp->pos)
+					return true;
+				index++;
+			}
+		}
+
+		WARN("Provided KLP_SYMPOS does not match a symbol: %s.%s,%d",
+				sp->object_name, sp->symbol_name, sp->pos);
 	}
 
-	WARN("Provided KLP_SYMPOS does not match a symbol: %s.%s,%d",
-			sp->object_name, sp->symbol_name, sp->pos);
 	print_valid_module_relocs(sp->symbol_name);
 
 	return false;
