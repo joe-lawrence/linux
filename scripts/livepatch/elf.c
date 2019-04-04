@@ -339,7 +339,18 @@ static int update_shstrtab(struct elf *elf)
 	shstrtab->elf_data->d_size = shstrtab->size = new_size;
 	shstrtab->sh.sh_size = new_size;
 
-	return 0;
+	return 1;
+}
+
+static void free_shstrtab(struct elf *elf)
+{
+	struct section *shstrtab;
+
+	shstrtab = find_section_by_name(elf, ".shstrtab");
+	if (!shstrtab)
+		return;
+
+	free(shstrtab->elf_data->d_buf);
 }
 
 static int update_strtab(struct elf *elf)
@@ -387,7 +398,19 @@ static int update_strtab(struct elf *elf)
 	strtab->elf_data->d_size = strtab->size = new_size;
 	strtab->sh.sh_size = new_size;
 
-	return 0;
+	return 1;
+}
+
+static void free_strtab(struct elf *elf)
+{
+	struct section *strtab;
+
+	strtab = find_section_by_name(elf, ".strtab");
+	if (!strtab)
+		return;
+
+	if (strtab->elf_data)
+		free(strtab->elf_data->d_buf);
 }
 
 static int update_symtab(struct elf *elf)
@@ -443,7 +466,18 @@ static int update_symtab(struct elf *elf)
 	/* update symtab section header */
 	symtab->sh.sh_info = nr_locals;
 
-	return 0;
+	return 1;
+}
+
+static void free_symtab(struct elf *elf)
+{
+	struct section *symtab;
+
+	symtab = find_section_by_name(elf, ".symtab");
+	if (!symtab)
+		return;
+
+	free(symtab->elf_data->d_buf);
 }
 
 static int update_relas(struct elf *elf)
@@ -488,7 +522,23 @@ static int update_relas(struct elf *elf)
 		}
 	}
 
-	return 0;
+	return 1;
+}
+
+static void free_relas(struct elf *elf)
+{
+	struct section *sec, *symtab;
+
+	symtab = find_section_by_name(elf, ".symtab");
+	if (!symtab)
+		return;
+
+	list_for_each_entry(sec, &elf->sections, list) {
+		if (!is_rela_section(sec))
+			continue;
+
+		free(sec->elf_data->d_buf);
+	}
 }
 
 static int write_file(struct elf *elf, const char *file)
@@ -583,30 +633,49 @@ static int write_file(struct elf *elf, const char *file)
 		return -1;
 	}
 
+	elf_end(e);
+
 	return 0;
 }
 
 int elf_write_file(struct elf *elf, const char *file)
 {
+	int ret_shstrtab;
+	int ret_strtab;
+	int ret_symtab;
+	int ret_relas;
 	int ret;
 
-	ret = update_shstrtab(elf);
+	ret_shstrtab = update_shstrtab(elf);
+	if (ret_shstrtab < 0)
+		return ret_shstrtab;
+
+	ret_strtab = update_strtab(elf);
+	if (ret_strtab < 0)
+		return ret_strtab;
+
+	ret_symtab = update_symtab(elf);
+	if (ret_symtab < 0)
+		return ret_symtab;
+
+	ret_relas = update_relas(elf);
+	if (ret_relas < 0)
+		return ret_relas;
+
+	ret = write_file(elf, file);
 	if (ret)
 		return ret;
 
-	ret = update_strtab(elf);
-	if (ret)
-		return ret;
+	if (ret_relas > 0)
+		free_relas(elf);
+	if (ret_symtab > 0)
+		free_symtab(elf);
+	if (ret_strtab > 0)
+		free_strtab(elf);
+	if (ret_shstrtab > 0)
+		free_shstrtab(elf);
 
-	ret = update_symtab(elf);
-	if (ret)
-		return ret;
-
-	ret = update_relas(elf);
-	if (ret)
-		return ret;
-
-	return write_file(elf, file);
+	return 0;
 }
 
 struct elf *elf_open(const char *name)
