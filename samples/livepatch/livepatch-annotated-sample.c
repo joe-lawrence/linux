@@ -22,7 +22,6 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/livepatch.h>
-#include <linux/seq_file.h>
 
 /*
  * This (dumb) live patch overrides the function that prints the
@@ -59,6 +58,7 @@
 
 extern char *saved_command_line;
 
+#include <linux/seq_file.h>
 static int livepatch_cmdline_proc_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%s livepatch=1\n", saved_command_line);
@@ -69,7 +69,7 @@ KLP_MODULE_RELOC(vmlinux) vmlinux_relocs[] = {
 	KLP_SYMPOS(saved_command_line, 0)
 };
 
-static struct klp_func vmlinux_funcs[] = {
+static struct klp_func funcs[] = {
 	{
 		.old_name = "cmdline_proc_show",
 		.new_func = livepatch_cmdline_proc_show,
@@ -79,7 +79,7 @@ static struct klp_func vmlinux_funcs[] = {
 static struct klp_object objs[] = {
 	{
 		/* name being NULL means vmlinux */
-		.funcs = vmlinux_funcs,
+		.funcs = funcs,
 	}, { }
 };
 
