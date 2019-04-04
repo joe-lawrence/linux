@@ -64,9 +64,9 @@ static bool load_syms_lists(const char *symbols_list)
 		return false;
 	}
 
-        /* read file format version */
+	/* read file format version */
 	n = getline(&sym, &len, fsyms);
-        if (n <= 0) {
+	if (n <= 0) {
 		WARN("Unable to read Symbol list: %s", symbols_list);
 		return false;
 	}
@@ -204,8 +204,7 @@ static bool sympos_sanity_check(void)
 		aux = list_next_entry(sp, list);
 		list_for_each_entry_from(aux, &usr_symbols, list) {
 			if (strcmp(sp->symbol_name, aux->symbol_name) == 0) {
-				WARN("Conflicting KLP_SYMPOS definition: \
-						%s.%s,%d vs. %s.%s,%d.",
+				WARN("Conflicting KLP_SYMPOS definition: %s.%s,%d vs. %s.%s,%d.",
 				sp->object_name, sp->symbol_name, sp->pos,
 				aux->object_name, aux->symbol_name, aux->pos);
 				sane = false;
@@ -564,7 +563,7 @@ static bool must_convert(struct symbol *sym)
 		return false;
 
 	/* we should not touch .TOC. on ppc64le */
-	if (strcmp(sym->name, ".TOC.")==0)
+	if (strcmp(sym->name, ".TOC.") == 0)
 		return false;
 
 	return (!(is_converted(sym->name) || is_exported(sym->name)));
