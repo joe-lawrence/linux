@@ -109,7 +109,6 @@ static bool load_syms_lists(const char *symbols_list)
 			}
 
 			entry->symbol_name = sym;
-
 			if (strncmp(entry->symbol_name, "__ksymtab_", 10) == 0)
 				list_add(&entry->list, &exp_symbols);
 			else
@@ -552,11 +551,13 @@ int main(int argc, const char **argv)
 				continue;
 
 			if (!find_missing_position(rela->sym, &sp)) {
-				WARN("Unable to find missing symbol");
+				WARN("Unable to find missing symbol: %s",
+						rela->sym->name);
 				return -1;
 			}
 			if (!convert_rela(sec, rela, &sp, klp_elf)) {
-				WARN("Unable to convert relocation");
+				WARN("Unable to convert relocation: %s",
+						rela->sym->name);
 				return -1;
 			}
 		}
