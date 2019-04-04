@@ -1975,7 +1975,7 @@ static void read_symbols(const char *modname)
 	}
 
 	/* Livepatch modules have unresolved symbols resolved by klp-convert */
-	if (get_modinfo(info.modinfo, info.modinfo_len, "livepatch"))
+	if (get_modinfo(&info, "livepatch"))
 		mod->livepatch = 1;
 
 	for (sym = info.symtab_start; sym < info.symtab_stop; sym++) {
