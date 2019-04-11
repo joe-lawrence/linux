@@ -9,8 +9,6 @@
 #ifndef _UAPI_LIVEPATCH_H
 #define _UAPI_LIVEPATCH_H
 
-#include <linux/types.h>
-
 #define KLP_RELA_PREFIX		".klp.rela."
 #define KLP_SYM_PREFIX		".klp.sym."
 
