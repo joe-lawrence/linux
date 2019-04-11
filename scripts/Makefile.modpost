@@ -131,7 +131,7 @@ quiet_cmd_klp_convert = KLP     $@
 			$(KLP_CONVERT) $(SLIST) $(@:.ko=.klp.o) $@
 
 define rule_ld_ko_o
-	$(call echo-cmd,ld_ko_o) $(cmd_ld_ko_o) ;			\
+	$(Q)$(call echo-cmd,ld_ko_o) $(cmd_ld_ko_o) ;			\
 	$(call save-cmd,ld_ko_o) ;					\
 	$(if $(CONFIG_LIVEPATCH),					\
 	  $(if $(wildcard $(MODVERDIR)/$(basetarget).livepatch),	\
