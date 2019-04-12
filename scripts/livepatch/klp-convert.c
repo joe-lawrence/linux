@@ -601,6 +601,44 @@ static void free_converted_resources(struct elf *klp_elf)
 	}
 }
 
+/*
+ * Static key conversations to livepatch symbols are not yet
+ * supported.  Verify that none of the new relocation symbols have
+ * a corresponding relocation in the '.rela__jump_table' section.
+ */
+static bool static_key_sanity_check(struct elf *klp_elf)
+{
+	struct section *sec;
+	struct rela *rela;
+	struct symbol *sym;
+	bool sane = true;
+
+	list_for_each_entry(sec, &klp_elf->sections, list) {
+
+		if (!is_rela_section(sec) ||
+		    strcmp(sec->name, ".rela__jump_table"))
+			continue;
+
+		list_for_each_entry(rela, &sec->relas, list) {
+			list_for_each_entry(sym, &klp_elf->symbols, list) {
+
+				if (sym != rela->sym)
+					continue;
+				if (!sym->name || !is_converted(sym->name))
+					continue;
+
+				WARN("Static key symbol conversion not supported: %s",
+					sym->name);
+				sane = false;
+			}
+		}
+
+		break;
+	}
+
+	return sane;
+}
+
 int main(int argc, const char **argv)
 {
 	const char *klp_in_module, *klp_out_module, *symbols_list;
@@ -651,6 +689,11 @@ int main(int argc, const char **argv)
 				return -1;
 			}
 		}
+	}
+
+	if (!static_key_sanity_check(klp_elf)) {
+		WARN("Unable to convert: %s", klp_in_module);
+		return -1;
 	}
 
 	free_syms_lists();
