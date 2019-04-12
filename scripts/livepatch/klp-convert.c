@@ -610,7 +610,7 @@ int main(int argc, const char **argv)
 	struct elf *klp_elf;
 
 	if (argc != 4) {
-		WARN("Usage: %s <Symbols.list> <input.ko> <out.ko>", argv[0]);
+		WARN("Usage: %s <Symbols.list> <input.ko> <output.ko>", argv[0]);
 		return -1;
 	}
 
