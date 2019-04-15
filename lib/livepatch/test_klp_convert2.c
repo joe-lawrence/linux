@@ -51,9 +51,9 @@ void print_homonym_string(void)
  * resolve it automatically.
  */
 KLP_MODULE_RELOC(test_klp_convert_mod) test_klp_convert_mod_relocs_a[] = {
-	KLP_SYMPOS(driver_name, 0)
-	KLP_SYMPOS(homonym_string, 2)
-	KLP_SYMPOS(get_homonym_string, 2)
+	KLP_SYMPOS(driver_name, 0),
+	KLP_SYMPOS(homonym_string, 2),
+	KLP_SYMPOS(get_homonym_string, 2),
 };
 
 static struct klp_func funcs[] = {
