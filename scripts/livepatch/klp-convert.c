@@ -194,7 +194,10 @@ static void clear_sympos_annontations(struct elf *klp_elf)
 	}
 }
 
-/* Checks if two or more elements in usr_symbols have the same name */
+/*
+ * Checks if two or more elements in usr_symbols have the same
+ * object and name, but different symbol position
+ */
 static bool sympos_sanity_check(void)
 {
 	bool sane = true;
@@ -203,7 +206,9 @@ static bool sympos_sanity_check(void)
 	list_for_each_entry(sp, &usr_symbols, list) {
 		aux = list_next_entry(sp, list);
 		list_for_each_entry_from(aux, &usr_symbols, list) {
-			if (strcmp(sp->symbol_name, aux->symbol_name) == 0) {
+			if (sp->pos != aux->pos &&
+			    strcmp(sp->object_name, aux->object_name) == 0 &&
+			    strcmp(sp->symbol_name, aux->symbol_name) == 0) {
 				WARN("Conflicting KLP_SYMPOS definition: %s.%s,%d vs. %s.%s,%d.",
 				sp->object_name, sp->symbol_name, sp->pos,
 				aux->object_name, aux->symbol_name, aux->pos);
