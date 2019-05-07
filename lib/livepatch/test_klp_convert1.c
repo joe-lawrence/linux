@@ -53,10 +53,10 @@ KLP_MODULE_RELOC(vmlinux) vmlinux_relocs[] = {
  * work correctly.
  */
 KLP_MODULE_RELOC(test_klp_convert_mod) test_klp_convert_mod_relocs_a[] = {
-	KLP_SYMPOS(driver_name, 0)
-	KLP_SYMPOS(homonym_string, 1)
-	KLP_SYMPOS(get_homonym_string, 1)
-	KLP_SYMPOS(get_driver_name, 0)
+	KLP_SYMPOS(driver_name, 0),
+	KLP_SYMPOS(homonym_string, 1),
+	KLP_SYMPOS(get_homonym_string, 1),
+	KLP_SYMPOS(get_driver_name, 0),
 };
 
 static struct klp_func funcs[] = {
