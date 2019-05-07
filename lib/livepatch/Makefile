@@ -9,6 +9,7 @@ LIVEPATCH_test_klp_convert1 := y
 LIVEPATCH_test_klp_convert2 := y
 LIVEPATCH_test_klp_convert_alt_inst := y
 LIVEPATCH_test_klp_convert_multi_objs := y
+LIVEPATCH_test_klp_convert_paravirt := y
 LIVEPATCH_test_klp_livepatch := y
 
 obj-$(CONFIG_TEST_LIVEPATCH) += test_klp_atomic_replace.o \
@@ -26,6 +27,7 @@ obj-$(CONFIG_TEST_LIVEPATCH) += test_klp_atomic_replace.o \
 # TODO: these should fail to build, so disabled for now
 #				test_klp_convert_alt_inst.o \
 #				test_klp_convert_alt_inst_mod.o \
+#				test_klp_convert_paravirt.o \
 
 test_klp_convert_mod-y := \
 	test_klp_convert_mod_a.o \
