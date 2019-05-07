@@ -33,6 +33,7 @@ struct symbol {
 	struct list_head list;
 	GElf_Sym sym;
 	struct section *sec;
+	struct section *klp_rela_sec;
 	char *name;
 	unsigned int idx;
 	unsigned char bind, type;

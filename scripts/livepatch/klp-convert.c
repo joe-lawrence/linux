@@ -512,14 +512,25 @@ static bool convert_rela(struct section *oldsec, struct rela *r,
 		return false;
 	}
 
-	/* Move the converted rela to klp rela section */
+	/*
+	 * Iterate through the rest of this section's relas and see if
+	 * there are similar symbols.  Set them up to move to the same
+	 * klp_rela_section, too.
+	 */
+
 	list_for_each_entry_safe(r1, r2, &oldsec->relas, list) {
 		if (r1->sym->name == r->sym->name) {
-			list_del(&r1->list);
-			list_add(&r1->list, &sec->relas);
+			r1->sym->klp_rela_sec = sec;
 		}
 	}
 	return true;
+}
+
+static void move_rela(struct rela *r)
+{
+	/* Move the converted rela to klp rela section */
+	list_del(&r->list);
+	list_add(&r->list, &r->sym->klp_rela_sec->relas);
 }
 
 /* Checks if given symbol name matches a symbol in exp_symbols */
@@ -633,23 +644,28 @@ int main(int argc, const char **argv)
 	}
 
 	list_for_each_entry_safe(sec, aux, &klp_elf->sections, list) {
-		if (!is_rela_section(sec))
+		if (!is_rela_section(sec) ||
+		    is_klp_rela_section(sec->name))
 			continue;
 
 		list_for_each_entry_safe(rela, tmprela, &sec->relas, list) {
 			if (!must_convert(rela->sym))
 				continue;
 
-			if (!find_missing_position(rela->sym, &sp)) {
-				WARN("Unable to find missing symbol: %s",
-						rela->sym->name);
-				return -1;
+			if (!is_converted(rela->sym->name)) {
+				if (!find_missing_position(rela->sym, &sp)) {
+					WARN("Unable to find missing symbol: %s",
+							rela->sym->name);
+					return -1;
+				}
+				if (!convert_rela(sec, rela, &sp, klp_elf)) {
+					WARN("Unable to convert relocation: %s",
+							rela->sym->name);
+					return -1;
+				}
 			}
-			if (!convert_rela(sec, rela, &sp, klp_elf)) {
-				WARN("Unable to convert relocation: %s",
-						rela->sym->name);
-				return -1;
-			}
+
+			move_rela(rela);
 		}
 	}
 
