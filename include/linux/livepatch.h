@@ -246,7 +246,7 @@ void klp_shadow_free_all(unsigned long id, klp_shadow_dtor_t dtor);
 	{								\
 		.sym = &symbol,						\
 		.sympos = pos,						\
-	},
+	}
 
 #else /* !CONFIG_LIVEPATCH */
 
