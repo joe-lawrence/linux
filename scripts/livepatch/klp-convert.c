@@ -452,7 +452,7 @@ static bool convert_klp_symbol(struct symbol *s, struct sympos *sp)
 	unsigned int length;
 
 	if (snprintf(pos, sizeof(pos), "%d", sp->pos) > sizeof(pos)) {
-		WARN("Insuficient buffer for expanding sympos (%s.%s,%d)\n",
+		WARN("Insufficient buffer for expanding sympos (%s.%s,%d)\n",
 				sp->object_name, sp->symbol_name, sp->pos);
 		return false;
 	}
@@ -490,7 +490,7 @@ static bool convert_klp_symbol(struct symbol *s, struct sympos *sp)
 }
 
 /*
- * Convert rela that cannot be resolved by the clasic module loader
+ * Convert rela that cannot be resolved by the classic module loader
  * to the special klp rela one.
  */
 static bool convert_rela(struct section *oldsec, struct rela *r,
