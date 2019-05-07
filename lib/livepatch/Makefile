@@ -11,6 +11,7 @@ LIVEPATCH_test_klp_convert_alt_inst := y
 LIVEPATCH_test_klp_convert_multi_objs := y
 LIVEPATCH_test_klp_convert_paravirt := y
 LIVEPATCH_test_klp_livepatch := y
+LIVEPATCH_test_klp_static_keys := y
 
 obj-$(CONFIG_TEST_LIVEPATCH) += test_klp_atomic_replace.o \
 				test_klp_callbacks_demo.o \
@@ -28,6 +29,8 @@ obj-$(CONFIG_TEST_LIVEPATCH) += test_klp_atomic_replace.o \
 #				test_klp_convert_alt_inst.o \
 #				test_klp_convert_alt_inst_mod.o \
 #				test_klp_convert_paravirt.o \
+#				test_klp_static_keys.o \
+#				test_klp_static_keys_mod.o
 
 test_klp_convert_mod-y := \
 	test_klp_convert_mod_a.o \
@@ -42,3 +45,7 @@ CFLAGS_test_klp_callbacks_busy.o	+= $(CC_FLAGS_FTRACE)
 CFLAGS_test_klp_callbacks_mod.o		+= $(CC_FLAGS_FTRACE)
 CFLAGS_test_klp_convert_alt_inst_mod.o  += $(CC_FLAGS_FTRACE)
 CFLAGS_test_klp_convert_mod.o		+= $(CC_FLAGS_FTRACE)
+CFLAGS_test_klp_static_keys_mod.o	+= $(CC_FLAGS_FTRACE)
+
+# Set local include directory for modules that CREATE_TRACE_POINTS
+CFLAGS_test_klp_static_keys_mod.o	+= -I$(src)
