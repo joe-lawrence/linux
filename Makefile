@@ -1378,7 +1378,7 @@ vmlinuxclean:
 	$(Q)$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) clean)
 
 klpclean:
-	$(Q) rm -f $(objtree)/Symbols.list
+	$(Q) rm -f $(SLIST)
 
 clean: archclean vmlinuxclean klpclean
 
