@@ -1116,6 +1116,23 @@ int klp_module_coming(struct module *mod)
 		return -EINVAL;
 
 	mutex_lock(&klp_mutex);
+
+	/*
+	 * Check to see if any livepatches have blacklisted this
+	 * <mod, srcversion> combo
+	 */
+	klp_for_each_patch(patch) {
+		struct klp_blacklist *blacklist;
+		klp_for_each_blacklist_static(patch, blacklist) {
+			if (!strcmp(mod->srcversion, blacklist->srcversion)) {
+				pr_warn("module: %s, srcversion: %s has been blacklisted by livepatch %s\n",
+					mod->name, mod->srcversion, patch->mod->name);
+				mutex_unlock(&klp_mutex);
+				return -EINVAL;
+			}
+		}
+	}
+
 	/*
 	 * Each module has to know that klp_module_coming()
 	 * has been called. We never know what module will

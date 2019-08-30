@@ -3,6 +3,7 @@
 TEST_PROGS_EXTENDED := functions.sh
 TEST_PROGS := \
 	test-livepatch.sh \
+	test-blacklist.sh \
 	test-callbacks.sh \
 	test-shadow-vars.sh
 

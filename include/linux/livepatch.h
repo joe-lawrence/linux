@@ -130,6 +130,10 @@ struct klp_object {
 	bool patched;
 };
 
+struct klp_blacklist {
+	char *srcversion;
+};
+
 /**
  * struct klp_patch - patch structure for live patching
  * @mod:	reference to the live patch module
@@ -142,6 +146,8 @@ struct klp_object {
  * @forced:	was involved in a forced transition
  * @free_work:	patch cleanup from workqueue-context
  * @finish:	for waiting till it is safe to remove the patch module
+ *
+ * @blacklisted_srcversions: module srcversions to blacklist
  */
 struct klp_patch {
 	/* external */
@@ -157,6 +163,7 @@ struct klp_patch {
 	bool forced;
 	struct work_struct free_work;
 	struct completion finish;
+	struct klp_blacklist *blacklist;
 };
 
 #define klp_for_each_object_static(patch, obj) \
