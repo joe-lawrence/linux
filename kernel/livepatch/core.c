@@ -583,18 +583,23 @@ static void klp_free_object_loaded(struct klp_object *obj)
 	}
 }
 
+static void klp_free_object(struct klp_object *obj, bool nops_only)
+{
+	__klp_free_funcs(obj, nops_only);
+
+	if (nops_only && !obj->dynamic)
+		return;
+
+	list_del(&obj->node);
+	kobject_put(&obj->kobj);
+}
+
 static void __klp_free_objects(struct klp_patch *patch, bool nops_only)
 {
 	struct klp_object *obj, *tmp_obj;
 
 	klp_for_each_object_safe(patch, obj, tmp_obj) {
-		__klp_free_funcs(obj, nops_only);
-
-		if (nops_only && !obj->dynamic)
-			continue;
-
-		list_del(&obj->node);
-		kobject_put(&obj->kobj);
+		klp_free_object(obj, nops_only);
 	}
 }
 
@@ -812,6 +817,8 @@ static int klp_init_object_early(struct klp_patch *patch,
 	if (obj->dynamic || try_module_get(obj->mod))
 		return 0;
 
+	/* patch stays when this function fails in klp_add_object() */
+	list_del(&obj->node);
 	return -ENODEV;
 }
 
@@ -993,9 +1000,22 @@ int klp_add_object(struct klp_object *obj)
 		goto err;
 	}
 
+	ret = klp_init_object_early(patch, obj);
+	if (ret)
+		goto err;
+
+	ret = klp_init_object(patch, obj);
+	if (ret) {
+		pr_warn("failed to initialize patch '%s' for module '%s' (%d)\n",
+			patch->obj->patch_name, obj->name, ret);
+		goto err_free;
+	}
+
 	mutex_unlock(&klp_mutex);
 	return 0;
 
+err_free:
+	klp_free_object(obj, false);
 err:
 	/*
 	 * If a patch is unsuccessfully applied, return
