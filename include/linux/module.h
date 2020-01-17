@@ -483,9 +483,6 @@ struct module {
 #ifdef CONFIG_LIVEPATCH
 	bool klp; /* Is this a livepatch module? */
 	bool klp_alive;
-
-	/* Elf information */
-	struct klp_modinfo *klp_info;
 #endif
 
 #ifdef CONFIG_MODULE_UNLOAD
