@@ -756,9 +756,6 @@ static int klp_init_object(struct klp_patch *patch, struct klp_object *obj)
 	int ret;
 	const char *name;
 
-	if (klp_is_module(obj) && strlen(obj->name) >= MODULE_NAME_LEN)
-		return -EINVAL;
-
 	obj->patched = false;
 
 	name = obj->name ? obj->name : "vmlinux";
@@ -851,8 +848,86 @@ static int klp_init_patch(struct klp_patch *patch)
 	return 0;
 }
 
+static int klp_check_module_name(struct klp_object *obj, bool is_module)
+{
+	char mod_name[MODULE_NAME_LEN];
+	const char *expected_name;
+
+	if (is_module) {
+		snprintf(mod_name, sizeof(mod_name), "%s__%s",
+			 obj->patch_name, obj->name);
+		expected_name = mod_name;
+	} else {
+		expected_name = obj->patch_name;
+	}
+
+	if (strcmp(expected_name, obj->mod->name)) {
+		pr_err("The module name %s does not match with obj->patch_name and obj->name. The expected name is: %s\n",
+		       obj->mod->name, expected_name);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int klp_check_object(struct klp_object *obj, bool is_module)
+{
+
+	if (!obj->mod)
+		return -EINVAL;
+
+	if (!is_livepatch_module(obj->mod)) {
+		pr_err("module %s is not marked as a livepatch module\n",
+		       obj->mod->name);
+		return -EINVAL;
+	}
+
+	if (!obj->patch_name) {
+		pr_err("module %s does not have set obj->patch_name\n",
+		       obj->mod->name);
+		return -EINVAL;
+	}
+
+	if (strlen(obj->patch_name) >= MODULE_NAME_LEN) {
+		pr_err("module %s has too long obj->patch_name\n",
+		       obj->mod->name);
+		return -EINVAL;
+	}
+
+	if (is_module) {
+		if (!obj->name) {
+			pr_err("module %s does not have set obj->name\n",
+			       obj->mod->name);
+			return -EINVAL;
+		}
+		if (strlen(obj->name) >= MODULE_NAME_LEN) {
+			pr_err("module %s has too long obj->name\n",
+			       obj->mod->name);
+			return -EINVAL;
+		}
+	} else if (obj->name) {
+		pr_err("module %s for vmlinux must not have set obj->name\n",
+		       obj->mod->name);
+		return -EINVAL;
+	}
+
+	if (!obj->funcs) {
+		pr_err("module %s does not have set obj->funcs\n",
+		       obj->mod->name);
+		return -EINVAL;
+	}
+
+	return klp_check_module_name(obj, is_module);
+}
+
 int klp_add_object(struct klp_object *obj)
 {
+	int ret;
+
+	ret = klp_check_object(obj, true);
+	if (ret)
+		return ret;
+
 	return 0;
 }
 EXPORT_SYMBOL_GPL(klp_add_object);
@@ -958,14 +1033,12 @@ int klp_enable_patch(struct klp_patch *patch)
 {
 	int ret;
 
-	if (!patch || !patch->obj || !patch->obj->mod)
+	if (!patch || !patch->obj)
 		return -EINVAL;
 
-	if (!is_livepatch_module(patch->obj->mod)) {
-		pr_err("module %s is not marked as a livepatch module\n",
-		       patch->obj->patch_name);
-		return -EINVAL;
-	}
+	ret = klp_check_object(patch->obj, false);
+	if (ret)
+		return ret;
 
 	if (!klp_initialized())
 		return -ENODEV;
