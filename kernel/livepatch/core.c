@@ -88,6 +88,18 @@ static struct klp_object *klp_find_object(struct klp_patch *patch,
 	return NULL;
 }
 
+static struct klp_patch *klp_find_patch(const char *patch_name)
+{
+	struct klp_patch *patch;
+
+	klp_for_each_patch(patch) {
+		if (!strcmp(patch->obj->patch_name, patch_name))
+			return patch;
+	}
+
+	return NULL;
+}
+
 struct klp_find_arg {
 	const char *objname;
 	const char *name;
@@ -920,15 +932,79 @@ static int klp_check_object(struct klp_object *obj, bool is_module)
 	return klp_check_module_name(obj, is_module);
 }
 
+static bool klp_is_object_name_supported(struct klp_patch *patch,
+					 const char *name)
+{
+	int i;
+
+	for (i = 0; patch->obj_names[i]; i++) {
+		if (!strcmp(name, patch->obj_names[i]))
+			return true;
+	}
+
+	return false;
+}
+
+/* Must be called under klp_mutex */
+static bool klp_is_object_compatible(struct klp_patch *patch,
+				     struct klp_object *obj)
+{
+	struct module *patched_mod;
+
+	if (!klp_is_object_name_supported(patch, obj->name)) {
+		pr_err("Livepatch (%s) is not supposed to livepatch the module: %s\n",
+		       obj->patch_name, obj->name);
+		return false;
+	}
+
+	mutex_lock(&module_mutex);
+	patched_mod = find_module(obj->name);
+	mutex_unlock(&module_mutex);
+
+	if (!patched_mod) {
+		pr_err("Livepatched module is not loaded: %s\n", obj->name);
+		return false;
+	}
+
+	return true;
+}
+
 int klp_add_object(struct klp_object *obj)
 {
+	struct klp_patch *patch;
 	int ret;
 
 	ret = klp_check_object(obj, true);
 	if (ret)
 		return ret;
 
+	mutex_lock(&klp_mutex);
+
+	patch = klp_find_patch(obj->patch_name);
+	if (!patch) {
+		pr_err("Can't load livepatch (%s) for module when the livepatch (%s) for vmcore is not loaded\n",
+		       obj->mod->name, obj->patch_name);
+		ret = -EINVAL;
+		goto err;
+	}
+
+	if (!klp_is_object_compatible(patch, obj)) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	mutex_unlock(&klp_mutex);
 	return 0;
+
+err:
+	/*
+	 * If a patch is unsuccessfully applied, return
+	 * error to the module loader.
+	 */
+	pr_warn("patch '%s' failed for module '%s', refusing to load module '%s'\n",
+		patch->obj->patch_name, obj->name, obj->name);
+	mutex_unlock(&klp_mutex);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(klp_add_object);
 
@@ -1033,7 +1109,7 @@ int klp_enable_patch(struct klp_patch *patch)
 {
 	int ret;
 
-	if (!patch || !patch->obj)
+	if (!patch || !patch->obj || !patch->obj_names)
 		return -EINVAL;
 
 	ret = klp_check_object(patch->obj, false);
