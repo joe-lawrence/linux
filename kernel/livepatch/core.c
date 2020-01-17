@@ -1011,6 +1011,28 @@ int klp_add_object(struct klp_object *obj)
 		goto err_free;
 	}
 
+	pr_notice("applying patch '%s' to loading module '%s'\n",
+		  patch->obj->patch_name, obj->name);
+
+	ret = klp_pre_patch_callback(obj);
+	if (ret) {
+		pr_warn("pre-patch callback failed for object '%s'\n",
+			obj->name);
+		goto err_free;
+	}
+
+	ret = klp_patch_object(obj);
+	if (ret) {
+		pr_warn("failed to apply patch '%s' to module '%s' (%d)\n",
+			patch->obj->patch_name, obj->name, ret);
+
+		klp_post_unpatch_callback(obj);
+		goto err_free;
+	}
+
+	if (patch != klp_transition_patch)
+		klp_post_patch_callback(obj);
+
 	mutex_unlock(&klp_mutex);
 	return 0;
 
