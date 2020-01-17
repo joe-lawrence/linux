@@ -1290,10 +1290,6 @@ static void klp_cleanup_module_patches_limited(struct module *mod,
 
 int klp_module_coming(struct module *mod)
 {
-	int ret;
-	struct klp_patch *patch;
-	struct klp_object *obj;
-
 	if (WARN_ON(mod->state != MODULE_STATE_COMING))
 		return -EINVAL;
 
@@ -1304,64 +1300,9 @@ int klp_module_coming(struct module *mod)
 	 * get patched by a new patch.
 	 */
 	mod->klp_alive = true;
-
-	klp_for_each_patch(patch) {
-		klp_for_each_object(patch, obj) {
-			if (!klp_is_module(obj) || strcmp(obj->name, mod->name))
-				continue;
-
-			obj->mod = mod;
-
-			ret = klp_init_object_loaded(obj);
-			if (ret) {
-				pr_warn("failed to initialize patch '%s' for module '%s' (%d)\n",
-					patch->obj->patch_name, obj->name, ret);
-				goto err;
-			}
-
-			pr_notice("applying patch '%s' to loading module '%s'\n",
-				  patch->obj->patch_name, obj->name);
-
-			ret = klp_pre_patch_callback(obj);
-			if (ret) {
-				pr_warn("pre-patch callback failed for object '%s'\n",
-					obj->name);
-				goto err;
-			}
-
-			ret = klp_patch_object(obj);
-			if (ret) {
-				pr_warn("failed to apply patch '%s' to module '%s' (%d)\n",
-					patch->obj->patch_name, obj->name, ret);
-
-				klp_post_unpatch_callback(obj);
-				goto err;
-			}
-
-			if (patch != klp_transition_patch)
-				klp_post_patch_callback(obj);
-
-			break;
-		}
-	}
-
 	mutex_unlock(&klp_mutex);
 
 	return 0;
-
-err:
-	/*
-	 * If a patch is unsuccessfully applied, return
-	 * error to the module loader.
-	 */
-	pr_warn("patch '%s' failed for module '%s', refusing to load module '%s'\n",
-		patch->obj->patch_name, obj->name, obj->name);
-	mod->klp_alive = false;
-	obj->mod = NULL;
-	klp_cleanup_module_patches_limited(mod, patch);
-	mutex_unlock(&klp_mutex);
-
-	return ret;
 }
 
 void klp_module_going(struct module *mod)
