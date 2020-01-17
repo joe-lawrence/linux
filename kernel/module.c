@@ -3721,28 +3721,30 @@ static int add_unformed_module(struct module *mod)
 again:
 	mutex_lock(&module_mutex);
 	old = find_module_all(mod->name, strlen(mod->name), true);
+
 	if (old != NULL) {
-		if (old->state != MODULE_STATE_LIVE) {
-			/* Wait in case it fails to load. */
+		if (old->state == MODULE_STATE_LIVE) {
 			mutex_unlock(&module_mutex);
-			err = wait_event_interruptible(module_wq,
-					       finished_loading(mod->name));
-			if (err)
-				goto out_unlocked;
-			goto again;
+			return -EEXIST;
 		}
-		err = -EEXIST;
-		goto out;
+
+		/* Wait in case it fails to load. */
+		mutex_unlock(&module_mutex);
+		err = wait_event_interruptible(module_wq,
+					       finished_loading(mod->name));
+		if (err)
+			return err;
+
+		/* Did the load succeded or failed? */
+		goto again;
 	}
+
 	mod_update_bounds(mod);
 	list_add_rcu(&mod->list, &modules);
 	mod_tree_insert(mod);
-	err = 0;
 
-out:
 	mutex_unlock(&module_mutex);
-out_unlocked:
-	return err;
+	return 0;
 }
 
 static int complete_formation(struct module *mod, struct load_info *info)
