@@ -599,21 +599,6 @@ static void __klp_free_funcs(struct klp_object *obj, bool nops_only)
 	}
 }
 
-/* Clean up when a patched object is unloaded */
-static void klp_free_object_loaded(struct klp_object *obj)
-{
-	struct klp_func *func;
-
-	obj->mod = NULL;
-
-	klp_for_each_func(obj, func) {
-		func->old_func = NULL;
-
-		if (func->nop)
-			func->new_func = NULL;
-	}
-}
-
 static void klp_free_object(struct klp_object *obj, bool nops_only)
 {
 	__klp_free_funcs(obj, nops_only);
@@ -907,6 +892,24 @@ static int klp_init_patch(struct klp_patch *patch)
 	list_add_tail(&patch->list, &klp_patches);
 
 	return 0;
+}
+
+static void klp_remove_object(struct klp_object *obj)
+{
+	struct klp_patch *patch =
+		container_of(obj->kobj.parent, struct klp_patch, kobj);
+
+	if (patch != klp_transition_patch)
+		klp_pre_unpatch_callback(obj);
+
+	pr_notice("reverting patch '%s' on unloading module '%s'\n",
+		  patch->obj->patch_name, obj->name);
+
+	klp_unpatch_object(obj);
+
+	klp_post_unpatch_callback(obj);
+
+	klp_free_object(obj, false);
 }
 
 static int klp_check_module_name(struct klp_object *obj, bool is_module)
@@ -1313,40 +1316,6 @@ void klp_discard_nops(struct klp_patch *new_patch)
 	klp_free_objects_dynamic(klp_transition_patch);
 }
 
-/*
- * Remove parts of patches that touch a given kernel module. The list of
- * patches processed might be limited. When limit is NULL, all patches
- * will be handled.
- */
-static void klp_cleanup_module_patches_limited(struct module *mod,
-					       struct klp_patch *limit)
-{
-	struct klp_patch *patch;
-	struct klp_object *obj;
-
-	klp_for_each_patch(patch) {
-		if (patch == limit)
-			break;
-
-		klp_for_each_object(patch, obj) {
-			if (!klp_is_module(obj) || strcmp(obj->name, mod->name))
-				continue;
-
-			if (patch != klp_transition_patch)
-				klp_pre_unpatch_callback(obj);
-
-			pr_notice("reverting patch '%s' on unloading module '%s'\n",
-				  patch->obj->patch_name, obj->name);
-			klp_unpatch_object(obj);
-
-			klp_post_unpatch_callback(obj);
-
-			klp_free_object_loaded(obj);
-			break;
-		}
-	}
-}
-
 int klp_module_coming(struct module *mod)
 {
 	char patch_name[MODULE_NAME_LEN];
@@ -1404,19 +1373,28 @@ err:
 
 void klp_module_going(struct module *mod)
 {
+	struct klp_patch *patch;
+	struct klp_object *obj, *tmp_obj;
+
 	if (WARN_ON(mod->state != MODULE_STATE_GOING &&
 		    mod->state != MODULE_STATE_COMING))
 		return;
 
 	mutex_lock(&klp_mutex);
 	/*
-	 * Each module has to know that klp_module_going()
-	 * has been called. We never know what module will
-	 * get patched by a new patch.
+	 * All already enabled livepatches for this module as going to be
+	 * removed now. From this point, klp_enable_patch() must not load
+	 * any new livepatch modules for this module.
 	 */
 	mod->klp_alive = false;
 
-	klp_cleanup_module_patches_limited(mod, NULL);
+	klp_for_each_patch(patch) {
+		klp_for_each_object_safe(patch, obj, tmp_obj) {
+			if (obj->name && !strcmp(obj->name, mod->name)) {
+				klp_remove_object(obj);
+			}
+		}
+	}
 
 	mutex_unlock(&klp_mutex);
 }
