@@ -204,8 +204,6 @@ struct klp_patch {
 int klp_enable_patch(struct klp_patch *);
 int klp_add_object(struct klp_object *);
 
-void arch_klp_init_object_loaded(struct klp_object *obj);
-
 /* Called from the module loader during module coming/going states */
 bool klp_break_recursion(struct module *mod);
 int klp_module_coming(struct module *mod);
