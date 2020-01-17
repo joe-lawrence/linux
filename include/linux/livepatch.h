@@ -155,6 +155,7 @@ struct klp_state {
  * @obj_list:	dynamic list of the object entries
  * @enabled:	the patch is enabled (but operation may be incomplete)
  * @forced:	was involved in a forced transition
+ * ts:		timestamp when the livepatch has been loaded
  * @free_work:	patch cleanup from workqueue-context
  * @finish:	for waiting till it is safe to remove the patch module
  */
@@ -171,6 +172,7 @@ struct klp_patch {
 	struct list_head obj_list;
 	bool enabled;
 	bool forced;
+	u64 ts;
 	struct work_struct free_work;
 	struct completion finish;
 };

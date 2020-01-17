@@ -20,6 +20,7 @@
 #include <linux/moduleloader.h>
 #include <linux/completion.h>
 #include <linux/memory.h>
+#include <linux/sched/clock.h>
 #include <asm/cacheflush.h>
 #include "core.h"
 #include "patch.h"
@@ -854,6 +855,7 @@ static int klp_init_patch_early(struct klp_patch *patch)
 	kobject_init(&patch->kobj, &klp_ktype_patch);
 	patch->enabled = false;
 	patch->forced = false;
+	patch->ts = local_clock();
 	INIT_WORK(&patch->free_work, klp_free_patch_work_fn);
 	init_completion(&patch->finish);
 
@@ -1325,6 +1327,7 @@ int klp_module_coming(struct module *mod)
 {
 	char patch_name[MODULE_NAME_LEN];
 	struct klp_patch *patch;
+	u64 patch_ts;
 	int ret = 0;
 
 	if (WARN_ON(mod->state != MODULE_STATE_COMING))
@@ -1340,6 +1343,7 @@ restart:
 			continue;
 
 		strncpy(patch_name, patch->obj->patch_name, sizeof(patch_name));
+		patch_ts = patch->ts;
 		mutex_unlock(&klp_mutex);
 
 		ret = klp_try_load_object(patch_name, mod->name);
@@ -1347,14 +1351,11 @@ restart:
 		 * The load might have failed because the patch has
 		 * been removed in the meantime. In this case, the
 		 * error might be ignored.
-		 *
-		 * FIXME: It is not fully proof. The patch might have be
-		 * unloaded and loaded again in the mean time.
 		 */
 		mutex_lock(&klp_mutex);
 		if (ret) {
 			patch = klp_find_patch(patch_name);
-			if (patch)
+			if (patch && patch->ts == patch_ts)
 				goto err;
 			ret = 0;
 		}
