@@ -331,7 +331,7 @@ $MOD_LIVEPATCH: pre_patch_callback: $MOD_TARGET -> [MODULE_STATE_COMING] Full fo
 livepatch: pre-patch callback failed for object '$MOD_TARGET'
 livepatch: patch '$MOD_LIVEPATCH' failed for module '$MOD_TARGET', refusing to load module '$MOD_TARGET'
 livepatch: Module load failed: ${MOD_LIVEPATCH}__${MOD_TARGET}
-modprobe: ERROR: could not insert '$MOD_TARGET': No such device
+modprobe: ERROR: could not insert '$MOD_TARGET': Invalid argument
 % echo 0 > /sys/kernel/livepatch/$MOD_LIVEPATCH/enabled
 livepatch: '$MOD_LIVEPATCH': initializing unpatching transition
 $MOD_LIVEPATCH: pre_unpatch_callback: vmlinux
