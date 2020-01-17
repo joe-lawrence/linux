@@ -45,6 +45,7 @@ DEFINE_MUTEX(klp_mutex);
 LIST_HEAD(klp_patches);
 
 static struct kobject *klp_root_kobj;
+static struct klp_patch *klp_loading_patch;
 
 static bool klp_is_module(struct klp_object *obj)
 {
@@ -329,6 +330,16 @@ static ssize_t enabled_store(struct kobject *kobj, struct kobj_attribute *attr,
 	if (patch->enabled == enabled) {
 		/* already in requested state */
 		ret = -EINVAL;
+		goto out;
+	}
+
+	/*
+	 * Do not manipulate other livepatches when a new one is being
+	 * loaded to make our live easier. The patch that is being londed
+	 * is not visible in sysfs at this point.
+	 */
+	if (klp_loading_patch) {
+		ret = -EBUSY;
 		goto out;
 	}
 
@@ -1052,6 +1063,9 @@ int klp_add_object(struct klp_object *obj)
 	if (ret)
 		goto err;
 
+	if (!patch->enabled)
+		goto out;
+
 	ret = klp_init_object(patch, obj);
 	if (ret) {
 		pr_warn("failed to initialize patch '%s' for module '%s' (%d)\n",
@@ -1081,6 +1095,7 @@ int klp_add_object(struct klp_object *obj)
 	if (patch != klp_transition_patch)
 		klp_post_patch_callback(obj);
 
+out:
 	mutex_unlock(&klp_mutex);
 	return 0;
 
@@ -1147,12 +1162,43 @@ static int klp_try_load_object(const char *patch_name, const char *obj_name)
 	return 0;
 }
 
+/*
+ * This function is guarded by klp_loading_patch instead of klp_mutex to avoid
+ * deadlocks. It loads other livepatch modules via modprobe called in userspace.
+ * The other modules need to take klp-mutex as well.
+ */
+static int klp_load_objects_livepatches(struct klp_patch *patch)
+{
+	int i, ret;
+
+	for (i = 0; patch->obj_names[i]; i++) {
+		char *obj_name = patch->obj_names[i];
+		struct module *patched_mod;
+		bool obj_alive;
+
+		mutex_lock(&module_mutex);
+		patched_mod = find_module(obj_name);
+		obj_alive = patched_mod ? patched_mod->klp_alive : false;
+		mutex_unlock(&module_mutex);
+
+		/* Load livepatch module only for loaded objects. */
+		if (!obj_alive)
+			continue;
+
+		ret = klp_try_load_object(patch->obj->patch_name, obj_name);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int __klp_enable_patch(struct klp_patch *patch)
 {
 	struct klp_object *obj;
 	int ret;
 
-	if (klp_transition_patch)
+	if (klp_transition_patch || klp_loading_patch)
 		return -EBUSY;
 
 	if (WARN_ON(patch->enabled))
@@ -1199,6 +1245,21 @@ err:
 	return ret;
 }
 
+static int klp_check_patches_in_progress(void)
+{
+	struct klp_patch *patch;
+
+	if (klp_loading_patch)
+		patch = klp_loading_patch;
+	else if (klp_transition_patch)
+		patch = klp_transition_patch;
+	else
+		return 0;
+
+	pr_err("Already enabling livepatch: %s\n", patch->obj->mod->name);
+	return -EBUSY;
+}
+
 /**
  * klp_enable_patch() - enable the livepatch
  * @patch:	patch to be enabled
@@ -1233,6 +1294,12 @@ int klp_enable_patch(struct klp_patch *patch)
 
 	mutex_lock(&klp_mutex);
 
+	ret = klp_check_patches_in_progress();
+	if (ret) {
+		mutex_unlock(&klp_mutex);
+		return ret;
+	}
+
 	if (!klp_is_patch_compatible(patch)) {
 		pr_err("Livepatch patch (%s) is not compatible with the already installed livepatches.\n",
 			patch->obj->mod->name);
@@ -1245,6 +1312,17 @@ int klp_enable_patch(struct klp_patch *patch)
 		mutex_unlock(&klp_mutex);
 		return ret;
 	}
+
+	klp_loading_patch = patch;
+	mutex_unlock(&klp_mutex);
+
+	ret = klp_load_objects_livepatches(patch);
+
+	mutex_lock(&klp_mutex);
+	klp_loading_patch = NULL;
+
+	if (ret)
+		goto err;
 
 	ret = klp_init_patch(patch);
 	if (ret)
