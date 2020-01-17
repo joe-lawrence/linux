@@ -1417,6 +1417,22 @@ static bool klp_is_object_module_alive(const char *patch_name,
 	return alive;
 }
 
+bool klp_break_recursion(struct module *mod)
+{
+	bool ret = false;
+
+	if (!mod->klp)
+		return false;
+
+	mutex_lock(&klp_mutex);
+	if (klp_loading_patch &&
+	    !strcmp(klp_loading_patch->obj->mod->name, mod->name))
+		ret = true;
+	mutex_unlock(&klp_mutex);
+
+	return ret;
+}
+
 int klp_module_coming(struct module *mod)
 {
 	char patch_name[MODULE_NAME_LEN];

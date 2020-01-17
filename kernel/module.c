@@ -867,6 +867,13 @@ int ref_module(struct module *a, struct module *b)
 {
 	int err;
 
+	/*
+	 * Livepatch modules have their own dependency handling.
+	 * Implicit dependencies might cause cycles.
+	 */
+	if (is_livepatch_module(a))
+		return 0;
+
 	if (b == NULL || already_uses(a, b))
 		return 0;
 
@@ -3730,6 +3737,15 @@ again:
 
 		/* Wait in case it fails to load. */
 		mutex_unlock(&module_mutex);
+
+		/*
+		 * Livepatch modules might use exported symbols from vmlinux.
+		 * It creates automatic dependencies and recursive module load.
+		 * Livepatch core handles the consistency on its own.
+		 */
+		if (klp_break_recursion(mod))
+			return -EEXIST;
+
 		err = wait_event_interruptible(module_wq,
 					       finished_loading(mod->name));
 		if (err)

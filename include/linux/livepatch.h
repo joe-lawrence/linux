@@ -207,6 +207,7 @@ int klp_add_object(struct klp_object *);
 void arch_klp_init_object_loaded(struct klp_object *obj);
 
 /* Called from the module loader during module coming/going states */
+bool klp_break_recursion(struct module *mod);
 int klp_module_coming(struct module *mod);
 void klp_module_going(struct module *mod);
 
@@ -244,6 +245,7 @@ struct klp_state *klp_get_prev_state(unsigned long id);
 
 #else /* !CONFIG_LIVEPATCH */
 
+static inline bool klp_break_recursion(struct module *mod) { return false; }
 static inline int klp_module_coming(struct module *mod) { return 0; }
 static inline void klp_module_going(struct module *mod) {}
 static inline bool klp_patch_pending(struct task_struct *task) { return false; }
