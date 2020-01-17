@@ -196,12 +196,15 @@ static int klp_find_object_symbol(const char *objname, const char *name,
 	return -EINVAL;
 }
 
-static int klp_resolve_symbols(Elf_Shdr *relasec, struct module *pmod)
+int klp_resolve_symbols(Elf_Shdr *sechdrs,
+			unsigned int relsec,
+			struct module *pmod)
 {
 	int i, cnt, vmlinux, ret;
 	char objname[MODULE_NAME_LEN];
 	char symname[KSYM_NAME_LEN];
 	char *strtab = pmod->core_kallsyms.strtab;
+	Elf_Shdr *relasec = sechdrs + relsec;
 	Elf_Rela *relas;
 	Elf_Sym *sym;
 	unsigned long sympos, addr;
@@ -249,54 +252,6 @@ static int klp_resolve_symbols(Elf_Shdr *relasec, struct module *pmod)
 	}
 
 	return 0;
-}
-
-static int klp_write_object_relocations(struct klp_object *obj)
-{
-	int i, cnt, ret = 0;
-	const char *objname, *secname;
-	char sec_objname[MODULE_NAME_LEN];
-	struct module *pmod;
-	Elf_Shdr *sec;
-
-	objname = klp_is_module(obj) ? obj->name : "vmlinux";
-	pmod = obj->mod;
-
-	/* For each klp relocation section */
-	for (i = 1; i < pmod->klp_info->hdr.e_shnum; i++) {
-		sec = pmod->klp_info->sechdrs + i;
-		secname = pmod->klp_info->secstrings + sec->sh_name;
-		if (!(sec->sh_flags & SHF_RELA_LIVEPATCH))
-			continue;
-
-		/*
-		 * Format: .klp.rela.sec_objname.section_name
-		 * See comment in klp_resolve_symbols() for an explanation
-		 * of the selected field width value.
-		 */
-		cnt = sscanf(secname, ".klp.rela.%55[^.]", sec_objname);
-		if (cnt != 1) {
-			pr_err("section %s has an incorrectly formatted name\n",
-			       secname);
-			ret = -EINVAL;
-			break;
-		}
-
-		if (strcmp(objname, sec_objname))
-			continue;
-
-		ret = klp_resolve_symbols(sec, pmod);
-		if (ret)
-			break;
-
-		ret = apply_relocate_add(pmod->klp_info->sechdrs,
-					 pmod->core_kallsyms.strtab,
-					 pmod->klp_info->symndx, i, pmod);
-		if (ret)
-			break;
-	}
-
-	return ret;
 }
 
 /*
@@ -758,18 +713,9 @@ static int klp_init_object_loaded(struct klp_object *obj)
 	int ret;
 
 	mutex_lock(&text_mutex);
-
 	module_disable_ro(obj->mod);
-	ret = klp_write_object_relocations(obj);
-	if (ret) {
-		module_enable_ro(obj->mod, true);
-		mutex_unlock(&text_mutex);
-		return ret;
-	}
-
 	arch_klp_init_object_loaded(obj);
 	module_enable_ro(obj->mod, true);
-
 	mutex_unlock(&text_mutex);
 
 	klp_for_each_func(obj, func) {
