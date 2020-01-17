@@ -852,6 +852,7 @@ static int klp_init_object_early(struct klp_patch *patch,
 static int klp_init_patch_early(struct klp_patch *patch)
 {
 	struct klp_object *obj = patch->obj;
+	int ret;
 
 	/* Main patch module is always for vmlinux */
 	if (obj->name)
@@ -865,7 +866,11 @@ static int klp_init_patch_early(struct klp_patch *patch)
 	INIT_WORK(&patch->free_work, klp_free_patch_work_fn);
 	init_completion(&patch->finish);
 
-	return klp_init_object_early(patch, obj);
+	ret = klp_init_object_early(patch, obj);
+	if (!ret)
+		list_add_tail(&patch->list, &klp_patches);
+
+	return ret;
 }
 
 static int klp_init_patch(struct klp_patch *patch)
@@ -888,8 +893,6 @@ static int klp_init_patch(struct klp_patch *patch)
 		if (ret)
 			return ret;
 	}
-
-	list_add_tail(&patch->list, &klp_patches);
 
 	return 0;
 }
