@@ -8,6 +8,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/kmod.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/mutex.h>
@@ -98,6 +99,24 @@ static struct klp_patch *klp_find_patch(const char *patch_name)
 	}
 
 	return NULL;
+}
+
+/*
+ * Search whether livepatch for a module is loaded.
+ * Do not use for "vmlinux" that is always loaded.
+ * Must be called under klp_mutex.
+ */
+static bool klp_is_object_loaded(struct klp_patch *patch,
+				 char *object_name)
+{
+	struct klp_object *obj;
+
+	klp_for_each_object(patch, obj) {
+		if (obj->name && !strcmp(object_name, obj->name))
+			return true;
+	}
+
+	return false;
 }
 
 struct klp_find_arg {
@@ -1083,6 +1102,19 @@ static int __klp_disable_patch(struct klp_patch *patch)
 	return 0;
 }
 
+static int klp_try_load_object(const char *patch_name, const char *obj_name)
+{
+	int ret;
+
+	ret = request_module("%s__%s", patch_name, obj_name);
+	if (ret) {
+		pr_info("Module load failed: %s__%s\n", patch_name, obj_name);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int __klp_enable_patch(struct klp_patch *patch)
 {
 	struct klp_object *obj;
@@ -1291,19 +1323,58 @@ static void klp_cleanup_module_patches_limited(struct module *mod,
 
 int klp_module_coming(struct module *mod)
 {
+	char patch_name[MODULE_NAME_LEN];
+	struct klp_patch *patch;
+	int ret = 0;
+
 	if (WARN_ON(mod->state != MODULE_STATE_COMING))
 		return -EINVAL;
 
 	mutex_lock(&klp_mutex);
+restart:
+	klp_for_each_patch(patch) {
+		if (!klp_is_object_name_supported(patch, mod->name))
+			continue;
+
+		if (klp_is_object_loaded(patch, mod->name))
+			continue;
+
+		strncpy(patch_name, patch->obj->patch_name, sizeof(patch_name));
+		mutex_unlock(&klp_mutex);
+
+		ret = klp_try_load_object(patch_name, mod->name);
+		/*
+		 * The load might have failed because the patch has
+		 * been removed in the meantime. In this case, the
+		 * error might be ignored.
+		 *
+		 * FIXME: It is not fully proof. The patch might have be
+		 * unloaded and loaded again in the mean time.
+		 */
+		mutex_lock(&klp_mutex);
+		if (ret) {
+			patch = klp_find_patch(patch_name);
+			if (patch)
+				goto err;
+			ret = 0;
+		}
+
+		/*
+		 * The list of patches might have been manipulated
+		 * in the meantime.
+		 */
+		goto restart;
+	}
+
 	/*
-	 * Each module has to know that klp_module_coming()
-	 * has been called. We never know what module will
-	 * get patched by a new patch.
+	 * All enabled livepatches are loaded now. From this point, any newly
+	 * enabled livepatch is responsible for loading the related livepatch
+	 * module in klp_enable_patch().
 	 */
 	mod->klp_alive = true;
+err:
 	mutex_unlock(&klp_mutex);
-
-	return 0;
+	return ret;
 }
 
 void klp_module_going(struct module *mod)
