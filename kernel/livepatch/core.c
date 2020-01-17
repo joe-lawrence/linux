@@ -1317,6 +1317,25 @@ void klp_discard_nops(struct klp_patch *new_patch)
 	klp_free_objects_dynamic(klp_transition_patch);
 }
 
+static bool klp_is_object_module_alive(const char *patch_name,
+				       const char *obj_name)
+{
+	static char mod_name[MODULE_NAME_LEN];
+	struct module *mod;
+	bool alive = false;
+
+	mutex_lock(&module_mutex);
+
+	snprintf(mod_name, sizeof(mod_name), "%s__%s", patch_name, obj_name);
+	mod = find_module(mod_name);
+	if (mod && mod->state & MODULE_STATE_LIVE)
+		alive = true;
+
+	mutex_unlock(&module_mutex);
+
+	return alive;
+}
+
 int klp_module_coming(struct module *mod)
 {
 	char patch_name[MODULE_NAME_LEN];
@@ -1335,6 +1354,19 @@ restart:
 
 		if (klp_is_object_loaded(patch, mod->name))
 			continue;
+
+		/*
+		 * Paranoid check. Prevent infinite loop when a livepatch
+		 * module is alive and klp_is_object_loaded() does not
+		 * see it. It might happen when the object is removed
+		 * and module_put() is not called. This should never happen
+		 * when everything works as expected.
+		 */
+		if (klp_is_object_module_alive(patch->obj->mod->name,
+					       mod->name)) {
+			ret = -EBUSY;
+			goto err;
+		}
 
 		strncpy(patch_name, patch->obj->patch_name, sizeof(patch_name));
 		patch_ts = patch->ts;
