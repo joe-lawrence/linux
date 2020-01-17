@@ -623,6 +623,7 @@ extern void __module_get(struct module *module);
 extern bool try_module_get(struct module *module);
 
 extern void module_put(struct module *module);
+extern int module_put_and_delete(struct module *mod);
 
 #else /*!CONFIG_MODULE_UNLOAD*/
 static inline bool try_module_get(struct module *module)
@@ -631,6 +632,10 @@ static inline bool try_module_get(struct module *module)
 }
 static inline void module_put(struct module *module)
 {
+}
+static inline int module_put_and_delete(struct module *mod)
+{
+	return 0;
 }
 static inline void __module_get(struct module *module)
 {

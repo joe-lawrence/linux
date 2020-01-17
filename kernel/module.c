@@ -964,12 +964,60 @@ EXPORT_SYMBOL(module_refcount);
 /* This exists whether we can unload or not */
 static void free_module(struct module *mod);
 
+int stop_module(struct module *mod, int flags)
+{
+	int forced = 0;
+
+	/* Other modules depend on us: get rid of them first. */
+	if (!list_empty(&mod->source_list))
+		return -EWOULDBLOCK;
+
+	/* Doing init or already dying? */
+	if (mod->state != MODULE_STATE_LIVE) {
+		/* FIXME: if (force), slam module count damn the torpedoes */
+		pr_debug("%s already dying\n", mod->name);
+		return -EBUSY;
+	}
+
+	/* If it has an init func, it must have an exit func to unload */
+	if (mod->init && !mod->exit) {
+		forced = try_force_unload(flags);
+		/* This module can't be removed */
+		if (!forced)
+			return -EBUSY;
+	}
+
+	/* Stop the machine so refcounts can't move and disable module. */
+	return try_stop_module(mod, flags, &forced);
+}
+
+/* Final destruction now no one is using it. */
+static void destruct_module(struct module *mod)
+{
+	if (mod->exit != NULL)
+		mod->exit();
+	blocking_notifier_call_chain(&module_notify_list,
+				     MODULE_STATE_GOING, mod);
+	klp_module_going(mod);
+	ftrace_release_mod(mod);
+
+	async_synchronize_full();
+
+	/* Store the name of the last unloaded module for diagnostic purposes */
+	strlcpy(last_unloaded_module, mod->name, sizeof(last_unloaded_module));
+
+	free_module(mod);
+
+	/* someone could wait for the module in add_unformed_module() */
+	wake_up_all(&module_wq);
+}
+
 SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 		unsigned int, flags)
 {
 	struct module *mod;
 	char name[MODULE_NAME_LEN];
-	int ret, forced = 0;
+	int ret;
 
 	if (!capable(CAP_SYS_MODULE) || modules_disabled)
 		return -EPERM;
@@ -989,52 +1037,14 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 		goto out;
 	}
 
-	if (!list_empty(&mod->source_list)) {
-		/* Other modules depend on us: get rid of them first. */
-		ret = -EWOULDBLOCK;
-		goto out;
-	}
-
-	/* Doing init or already dying? */
-	if (mod->state != MODULE_STATE_LIVE) {
-		/* FIXME: if (force), slam module count damn the torpedoes */
-		pr_debug("%s already dying\n", mod->name);
-		ret = -EBUSY;
-		goto out;
-	}
-
-	/* If it has an init func, it must have an exit func to unload */
-	if (mod->init && !mod->exit) {
-		forced = try_force_unload(flags);
-		if (!forced) {
-			/* This module can't be removed */
-			ret = -EBUSY;
-			goto out;
-		}
-	}
-
-	/* Stop the machine so refcounts can't move and disable module. */
-	ret = try_stop_module(mod, flags, &forced);
-	if (ret != 0)
+	ret = stop_module(mod, flags);
+	if (ret)
 		goto out;
 
 	mutex_unlock(&module_mutex);
-	/* Final destruction now no one is using it. */
-	if (mod->exit != NULL)
-		mod->exit();
-	blocking_notifier_call_chain(&module_notify_list,
-				     MODULE_STATE_GOING, mod);
-	klp_module_going(mod);
-	ftrace_release_mod(mod);
 
-	async_synchronize_full();
-
-	/* Store the name of the last unloaded module for diagnostic purposes */
-	strlcpy(last_unloaded_module, mod->name, sizeof(last_unloaded_module));
-
-	free_module(mod);
-	/* someone could wait for the module in add_unformed_module() */
-	wake_up_all(&module_wq);
+/* Final destruction now no one is using it. */
+	destruct_module(mod);
 	return 0;
 out:
 	mutex_unlock(&module_mutex);
@@ -1138,19 +1148,40 @@ bool try_module_get(struct module *module)
 }
 EXPORT_SYMBOL(try_module_get);
 
-void module_put(struct module *module)
+/* Must be called under module_mutex or with preemtion disabled */
+static void __module_put(struct module* module)
 {
 	int ret;
 
+	ret = atomic_dec_if_positive(&module->refcnt);
+	WARN_ON(ret < 0);	/* Failed to put refcount */
+	trace_module_put(module, _RET_IP_);
+}
+
+void module_put(struct module *module)
+{
 	if (module) {
 		preempt_disable();
-		ret = atomic_dec_if_positive(&module->refcnt);
-		WARN_ON(ret < 0);	/* Failed to put refcount */
-		trace_module_put(module, _RET_IP_);
+		__module_put(module);
 		preempt_enable();
 	}
 }
 EXPORT_SYMBOL(module_put);
+
+int module_put_and_delete(struct module *mod)
+{
+	int ret;
+	mutex_lock(&module_mutex);
+	__module_put(mod);
+	ret = stop_module(mod, 0);
+	mutex_unlock(&module_mutex);
+
+	if (ret)
+		return ret;
+
+	destruct_module(mod);
+	return 0;
+}
 
 #else /* !CONFIG_MODULE_UNLOAD */
 static inline void print_unload_info(struct seq_file *m, struct module *mod)
