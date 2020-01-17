@@ -556,8 +556,14 @@ static void klp_kobj_release_object(struct kobject *kobj)
 		return;
 	}
 
-	if (klp_is_module(obj) && !obj->forced)
+	if (obj->forced || !klp_is_module(obj))
+		return;
+
+	/* Must not explicitely remove module when adding failed. */
+	if (obj->add_err)
 		module_put(obj->mod);
+	else
+		schedule_work(&obj->remove_work);
 }
 
 static struct kobj_type klp_ktype_object = {
@@ -675,6 +681,14 @@ static void klp_free_patch_finish(struct klp_patch *patch)
 	/* Put the module after the last access to struct klp_patch. */
 	if (!patch->obj->forced)
 		module_put(patch->obj->mod);
+}
+
+static void klp_remove_module_work_fn(struct work_struct *work)
+{
+	struct klp_object *obj =
+		container_of(work, struct klp_object, remove_work);
+
+	module_put_and_delete(obj->mod);
 }
 
 /*
@@ -835,6 +849,8 @@ static int klp_init_object_early(struct klp_patch *patch,
 	kobject_init(&obj->kobj, &klp_ktype_object);
 	list_add_tail(&obj->node, &patch->obj_list);
 	obj->forced = false;
+	obj->add_err = false;
+	INIT_WORK(&obj->remove_work, klp_remove_module_work_fn);
 
 	klp_for_each_func_static(obj, func) {
 		klp_init_func_early(obj, func);
@@ -1063,6 +1079,7 @@ int klp_add_object(struct klp_object *obj)
 	return 0;
 
 err_free:
+	obj->add_err = true;
 	klp_free_object(obj, false);
 err:
 	/*
