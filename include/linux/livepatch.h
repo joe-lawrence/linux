@@ -211,6 +211,10 @@ bool klp_break_recursion(struct module *mod);
 int klp_module_coming(struct module *mod);
 void klp_module_going(struct module *mod);
 
+int klp_resolve_symbols(Elf_Shdr *sechdrs,
+			unsigned int relsec,
+			struct module *pmod);
+
 void klp_copy_process(struct task_struct *child);
 void klp_update_patch_state(struct task_struct *task);
 
