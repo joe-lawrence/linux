@@ -551,8 +551,13 @@ static void klp_kobj_release_object(struct kobject *kobj)
 
 	obj = container_of(kobj, struct klp_object, kobj);
 
-	if (obj->dynamic)
+	if (obj->dynamic) {
 		klp_free_object_dynamic(obj);
+		return;
+	}
+
+	if (klp_is_module(obj) && !obj->forced)
+		module_put(obj->mod);
 }
 
 static struct kobj_type klp_ktype_object = {
@@ -668,7 +673,7 @@ static void klp_free_patch_finish(struct klp_patch *patch)
 	wait_for_completion(&patch->finish);
 
 	/* Put the module after the last access to struct klp_patch. */
-	if (!patch->forced)
+	if (!patch->obj->forced)
 		module_put(patch->obj->mod);
 }
 
@@ -829,6 +834,7 @@ static int klp_init_object_early(struct klp_patch *patch,
 	INIT_LIST_HEAD(&obj->func_list);
 	kobject_init(&obj->kobj, &klp_ktype_object);
 	list_add_tail(&obj->node, &patch->obj_list);
+	obj->forced = false;
 
 	klp_for_each_func_static(obj, func) {
 		klp_init_func_early(obj, func);
@@ -854,7 +860,6 @@ static int klp_init_patch_early(struct klp_patch *patch)
 	INIT_LIST_HEAD(&patch->obj_list);
 	kobject_init(&patch->kobj, &klp_ktype_patch);
 	patch->enabled = false;
-	patch->forced = false;
 	patch->ts = local_clock();
 	INIT_WORK(&patch->free_work, klp_free_patch_work_fn);
 	init_completion(&patch->finish);
