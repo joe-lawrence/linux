@@ -1109,6 +1109,9 @@ static int klp_try_load_object(const char *patch_name, const char *obj_name)
 
 	ret = request_module("%s__%s", patch_name, obj_name);
 	if (ret) {
+		/* modprobe always set exit code 1 on error */
+		if (ret > 0)
+			ret = -EINVAL;
 		pr_info("Module load failed: %s__%s\n", patch_name, obj_name);
 		return ret;
 	}
