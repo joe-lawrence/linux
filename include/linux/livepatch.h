@@ -115,6 +115,8 @@ struct klp_callbacks {
  * @dynamic:    temporary object for nop functions; dynamically allocated
  * @patched:	the object's funcs have been added to the klp_ops list
  * @forced:	was involved in a forced transition
+ * @add_err:	failed to add the object when loading the livepatch module
+ * @remove_work: remove module from workqueue-context
  */
 struct klp_object {
 	/* external */
@@ -131,6 +133,8 @@ struct klp_object {
 	bool dynamic;
 	bool patched;
 	bool forced;
+	bool add_err;
+	struct work_struct remove_work;
 };
 
 /**
