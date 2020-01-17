@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/livepatch.h>
+#include "test_klp_callbacks_demo2.h"
 
 static int replace;
 module_param(replace, int, 0644);
@@ -20,58 +21,77 @@ static const char *const module_state[] = {
 
 static void callback_info(const char *callback, struct klp_object *obj)
 {
-	if (obj->mod)
-		pr_info("%s: %s -> %s\n", callback, obj->mod->name,
-			module_state[obj->mod->state]);
-	else
+	struct module *mod;
+
+	if (!obj->name) {
 		pr_info("%s: vmlinux\n", callback);
+		return;
+	}
+
+	mutex_lock(&module_mutex);
+	mod = find_module(obj->name);
+	if (mod) {
+		pr_info("%s: %s -> %s\n", callback, obj->name,
+			module_state[mod->state]);
+	} else {
+		pr_err("%s: Unable to find module: %s", callback, obj->name);
+	}
+	mutex_unlock(&module_mutex);
 }
 
 /* Executed on object patching (ie, patch enablement) */
-static int pre_patch_callback(struct klp_object *obj)
+int pre_patch_callback2(struct klp_object *obj)
 {
 	callback_info(__func__, obj);
 	return 0;
 }
+EXPORT_SYMBOL(pre_patch_callback2);
 
 /* Executed on object unpatching (ie, patch disablement) */
-static void post_patch_callback(struct klp_object *obj)
+void post_patch_callback2(struct klp_object *obj)
 {
 	callback_info(__func__, obj);
 }
+EXPORT_SYMBOL(post_patch_callback2);
 
 /* Executed on object unpatching (ie, patch disablement) */
-static void pre_unpatch_callback(struct klp_object *obj)
+void pre_unpatch_callback2(struct klp_object *obj)
 {
 	callback_info(__func__, obj);
 }
+EXPORT_SYMBOL(pre_unpatch_callback2);
 
 /* Executed on object unpatching (ie, patch disablement) */
-static void post_unpatch_callback(struct klp_object *obj)
+void post_unpatch_callback2(struct klp_object *obj)
 {
 	callback_info(__func__, obj);
 }
+EXPORT_SYMBOL(post_unpatch_callback2);
 
 static struct klp_func no_funcs[] = {
 	{ }
 };
 
-static struct klp_object objs[] = {
-	{
-		.name = NULL,	/* vmlinux */
-		.funcs = no_funcs,
-		.callbacks = {
-			.pre_patch = pre_patch_callback,
-			.post_patch = post_patch_callback,
-			.pre_unpatch = pre_unpatch_callback,
-			.post_unpatch = post_unpatch_callback,
-		},
-	}, { }
+static struct klp_object obj = {
+	.patch_name = LIVEPATCH_NAME,
+	.name = NULL,	/* vmlinux */
+	.mod = THIS_MODULE,
+	.funcs = no_funcs,
+	.callbacks = {
+		.pre_patch = pre_patch_callback2,
+		.post_patch = post_patch_callback2,
+		.pre_unpatch = pre_unpatch_callback2,
+		.post_unpatch = post_unpatch_callback2,
+	},
+};
+
+static char *obj_names[] = {
+	NULL
 };
 
 static struct klp_patch patch = {
-	.mod = THIS_MODULE,
-	.objs = objs,
+	.obj = &obj,
+	.obj_names = obj_names,
 	/* set .replace in the init function below for demo purposes */
 };
 

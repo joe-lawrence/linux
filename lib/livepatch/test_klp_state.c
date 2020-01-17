@@ -22,11 +22,22 @@ static const char *const module_state[] = {
 
 static void callback_info(const char *callback, struct klp_object *obj)
 {
-	if (obj->mod)
-		pr_info("%s: %s -> %s\n", callback, obj->mod->name,
-			module_state[obj->mod->state]);
-	else
+	struct module *mod;
+
+	if (!obj->name) {
 		pr_info("%s: vmlinux\n", callback);
+		return;
+	}
+
+	mutex_lock(&module_mutex);
+	mod = find_module(obj->name);
+	if (mod) {
+		pr_info("%s: %s -> %s\n", callback, obj->name,
+			module_state[mod->state]);
+	} else {
+		pr_err("%s: Unable to find module: %s", callback, obj->name);
+	}
+	mutex_unlock(&module_mutex);
 }
 
 static struct klp_patch patch;
@@ -118,19 +129,6 @@ static struct klp_func no_funcs[] = {
 	{}
 };
 
-static struct klp_object objs[] = {
-	{
-		.name = NULL,	/* vmlinux */
-		.funcs = no_funcs,
-		.callbacks = {
-			.pre_patch = pre_patch_callback,
-			.post_patch = post_patch_callback,
-			.pre_unpatch = pre_unpatch_callback,
-			.post_unpatch = post_unpatch_callback,
-		},
-	}, { }
-};
-
 static struct klp_state states[] = {
 	{
 		.id = CONSOLE_LOGLEVEL_STATE,
@@ -138,9 +136,26 @@ static struct klp_state states[] = {
 	}, { }
 };
 
-static struct klp_patch patch = {
+static struct klp_object obj = {
+	.patch_name = THIS_MODULE->name,
+	.name = NULL,	/* vmlinux */
 	.mod = THIS_MODULE,
-	.objs = objs,
+	.funcs = no_funcs,
+	.callbacks = {
+		.pre_patch = pre_patch_callback,
+		.post_patch = post_patch_callback,
+		.pre_unpatch = pre_unpatch_callback,
+		.post_unpatch = post_unpatch_callback,
+	},
+};
+
+static char *obj_names[] = {
+	NULL
+};
+
+static struct klp_patch patch = {
+	.obj = &obj,
+	.obj_names = obj_names,
 	.states = states,
 	.replace = true,
 };

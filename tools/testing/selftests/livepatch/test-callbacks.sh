@@ -509,17 +509,17 @@ livepatch: '$MOD_LIVEPATCH': patching complete
 % modprobe $MOD_LIVEPATCH2
 livepatch: enabling patch '$MOD_LIVEPATCH2'
 livepatch: '$MOD_LIVEPATCH2': initializing patching transition
-$MOD_LIVEPATCH2: pre_patch_callback: vmlinux
+$MOD_LIVEPATCH2: pre_patch_callback2: vmlinux
 livepatch: '$MOD_LIVEPATCH2': starting patching transition
 livepatch: '$MOD_LIVEPATCH2': completing patching transition
-$MOD_LIVEPATCH2: post_patch_callback: vmlinux
+$MOD_LIVEPATCH2: post_patch_callback2: vmlinux
 livepatch: '$MOD_LIVEPATCH2': patching complete
 % echo 0 > /sys/kernel/livepatch/$MOD_LIVEPATCH2/enabled
 livepatch: '$MOD_LIVEPATCH2': initializing unpatching transition
-$MOD_LIVEPATCH2: pre_unpatch_callback: vmlinux
+$MOD_LIVEPATCH2: pre_unpatch_callback2: vmlinux
 livepatch: '$MOD_LIVEPATCH2': starting unpatching transition
 livepatch: '$MOD_LIVEPATCH2': completing unpatching transition
-$MOD_LIVEPATCH2: post_unpatch_callback: vmlinux
+$MOD_LIVEPATCH2: post_unpatch_callback2: vmlinux
 livepatch: '$MOD_LIVEPATCH2': unpatching complete
 % echo 0 > /sys/kernel/livepatch/$MOD_LIVEPATCH/enabled
 livepatch: '$MOD_LIVEPATCH': initializing unpatching transition
@@ -568,17 +568,17 @@ livepatch: '$MOD_LIVEPATCH': patching complete
 % modprobe $MOD_LIVEPATCH2 replace=1
 livepatch: enabling patch '$MOD_LIVEPATCH2'
 livepatch: '$MOD_LIVEPATCH2': initializing patching transition
-$MOD_LIVEPATCH2: pre_patch_callback: vmlinux
+$MOD_LIVEPATCH2: pre_patch_callback2: vmlinux
 livepatch: '$MOD_LIVEPATCH2': starting patching transition
 livepatch: '$MOD_LIVEPATCH2': completing patching transition
-$MOD_LIVEPATCH2: post_patch_callback: vmlinux
+$MOD_LIVEPATCH2: post_patch_callback2: vmlinux
 livepatch: '$MOD_LIVEPATCH2': patching complete
 % echo 0 > /sys/kernel/livepatch/$MOD_LIVEPATCH2/enabled
 livepatch: '$MOD_LIVEPATCH2': initializing unpatching transition
-$MOD_LIVEPATCH2: pre_unpatch_callback: vmlinux
+$MOD_LIVEPATCH2: pre_unpatch_callback2: vmlinux
 livepatch: '$MOD_LIVEPATCH2': starting unpatching transition
 livepatch: '$MOD_LIVEPATCH2': completing unpatching transition
-$MOD_LIVEPATCH2: post_unpatch_callback: vmlinux
+$MOD_LIVEPATCH2: post_unpatch_callback2: vmlinux
 livepatch: '$MOD_LIVEPATCH2': unpatching complete
 % rmmod $MOD_LIVEPATCH2
 % rmmod $MOD_LIVEPATCH"

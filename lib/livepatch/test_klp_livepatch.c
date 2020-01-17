@@ -22,16 +22,20 @@ static struct klp_func funcs[] = {
 	}, { }
 };
 
-static struct klp_object objs[] = {
-	{
-		/* name being NULL means vmlinux */
-		.funcs = funcs,
-	}, { }
+struct klp_object obj = {
+	.patch_name = THIS_MODULE->name,
+	.name = NULL,	/* vmlinux */
+	.mod = THIS_MODULE,
+	.funcs = funcs,
+};
+
+static char *obj_names[] = {
+	NULL
 };
 
 static struct klp_patch patch = {
-	.mod = THIS_MODULE,
-	.objs = objs,
+	.obj = &obj,
+	.obj_names = obj_names,
 };
 
 static int test_klp_livepatch_init(void)

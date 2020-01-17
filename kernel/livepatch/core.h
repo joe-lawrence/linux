@@ -18,11 +18,6 @@ void klp_free_replaced_patches_async(struct klp_patch *new_patch);
 void klp_unpatch_replaced_patches(struct klp_patch *new_patch);
 void klp_discard_nops(struct klp_patch *new_patch);
 
-static inline bool klp_is_object_loaded(struct klp_object *obj)
-{
-	return !obj->name || obj->mod;
-}
-
 static inline int klp_pre_patch_callback(struct klp_object *obj)
 {
 	int ret = 0;

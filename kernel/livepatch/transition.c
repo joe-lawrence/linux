@@ -74,7 +74,7 @@ static void klp_complete_transition(void)
 	unsigned int cpu;
 
 	pr_debug("'%s': completing %s transition\n",
-		 klp_transition_patch->mod->name,
+		 klp_transition_patch->obj->patch_name,
 		 klp_target_state == KLP_PATCHED ? "patching" : "unpatching");
 
 	if (klp_transition_patch->replace && klp_target_state == KLP_PATCHED) {
@@ -120,15 +120,13 @@ static void klp_complete_transition(void)
 	}
 
 	klp_for_each_object(klp_transition_patch, obj) {
-		if (!klp_is_object_loaded(obj))
-			continue;
 		if (klp_target_state == KLP_PATCHED)
 			klp_post_patch_callback(obj);
 		else if (klp_target_state == KLP_UNPATCHED)
 			klp_post_unpatch_callback(obj);
 	}
 
-	pr_notice("'%s': %s complete\n", klp_transition_patch->mod->name,
+	pr_notice("'%s': %s complete\n", klp_transition_patch->obj->patch_name,
 		  klp_target_state == KLP_PATCHED ? "patching" : "unpatching");
 
 	klp_target_state = KLP_UNDEFINED;
@@ -147,7 +145,7 @@ void klp_cancel_transition(void)
 		return;
 
 	pr_debug("'%s': canceling patching transition, going to unpatch\n",
-		 klp_transition_patch->mod->name);
+		 klp_transition_patch->obj->patch_name);
 
 	klp_target_state = KLP_UNPATCHED;
 	klp_complete_transition();
@@ -468,7 +466,7 @@ void klp_start_transition(void)
 	WARN_ON_ONCE(klp_target_state == KLP_UNDEFINED);
 
 	pr_notice("'%s': starting %s transition\n",
-		  klp_transition_patch->mod->name,
+		  klp_transition_patch->obj->patch_name,
 		  klp_target_state == KLP_PATCHED ? "patching" : "unpatching");
 
 	/*
@@ -519,7 +517,7 @@ void klp_init_transition(struct klp_patch *patch, int state)
 	 */
 	klp_target_state = state;
 
-	pr_debug("'%s': initializing %s transition\n", patch->mod->name,
+	pr_debug("'%s': initializing %s transition\n", patch->obj->patch_name,
 		 klp_target_state == KLP_PATCHED ? "patching" : "unpatching");
 
 	/*
@@ -581,7 +579,7 @@ void klp_reverse_transition(void)
 	struct task_struct *g, *task;
 
 	pr_debug("'%s': reversing transition from %s\n",
-		 klp_transition_patch->mod->name,
+		 klp_transition_patch->obj->patch_name,
 		 klp_target_state == KLP_PATCHED ? "patching to unpatching" :
 						   "unpatching to patching");
 

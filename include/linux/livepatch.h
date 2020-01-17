@@ -105,19 +105,21 @@ struct klp_callbacks {
 /**
  * struct klp_object - kernel object structure for live patching
  * @name:	module name (or NULL for vmlinux)
+ * @patch_name:	module name for  vmlinux
+ * @mod:	reference to the live patch module for this object
  * @funcs:	function entries for functions to be patched in the object
  * @callbacks:	functions to be executed pre/post (un)patching
  * @kobj:	kobject for sysfs resources
  * @func_list:	dynamic list of the function entries
  * @node:	list node for klp_patch obj_list
- * @mod:	kernel module associated with the patched object
- *		(NULL for vmlinux)
  * @dynamic:    temporary object for nop functions; dynamically allocated
  * @patched:	the object's funcs have been added to the klp_ops list
  */
 struct klp_object {
 	/* external */
 	const char *name;
+	const char *patch_name;
+	struct module *mod;
 	struct klp_func *funcs;
 	struct klp_callbacks callbacks;
 
@@ -125,7 +127,6 @@ struct klp_object {
 	struct kobject kobj;
 	struct list_head func_list;
 	struct list_head node;
-	struct module *mod;
 	bool dynamic;
 	bool patched;
 };
@@ -144,8 +145,9 @@ struct klp_state {
 
 /**
  * struct klp_patch - patch structure for live patching
- * @mod:	reference to the live patch module
- * @objs:	object entries for kernel objects to be patched
+ * @patch_name: livepatch name; same for related livepatch against other objects
+ * @objs:	object entry for vmlinux object
+ * @obj_names:	names of modules synchronously livepatched with this patch
  * @states:	system states that can get modified
  * @replace:	replace all actively used patches
  * @list:	list node for global list of actively used patches
@@ -158,9 +160,9 @@ struct klp_state {
  */
 struct klp_patch {
 	/* external */
-	struct module *mod;
-	struct klp_object *objs;
 	struct klp_state *states;
+	struct klp_object *obj;
+	char **obj_names;
 	bool replace;
 
 	/* internal */
@@ -194,9 +196,9 @@ struct klp_patch {
 	list_for_each_entry(func, &obj->func_list, node)
 
 int klp_enable_patch(struct klp_patch *);
+int klp_add_object(struct klp_object *);
 
-void arch_klp_init_object_loaded(struct klp_patch *patch,
-				 struct klp_object *obj);
+void arch_klp_init_object_loaded(struct klp_object *obj);
 
 /* Called from the module loader during module coming/going states */
 int klp_module_coming(struct module *mod);

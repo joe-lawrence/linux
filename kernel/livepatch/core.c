@@ -49,34 +49,6 @@ static bool klp_is_module(struct klp_object *obj)
 	return obj->name;
 }
 
-/* sets obj->mod if object is not vmlinux and module is found */
-static void klp_find_object_module(struct klp_object *obj)
-{
-	struct module *mod;
-
-	if (!klp_is_module(obj))
-		return;
-
-	mutex_lock(&module_mutex);
-	/*
-	 * We do not want to block removal of patched modules and therefore
-	 * we do not take a reference here. The patches are removed by
-	 * klp_module_going() instead.
-	 */
-	mod = find_module(obj->name);
-	/*
-	 * Do not mess work of klp_module_coming() and klp_module_going().
-	 * Note that the patch might still be needed before klp_module_going()
-	 * is called. Module functions can be called even in the GOING state
-	 * until mod->exit() finishes. This is especially important for
-	 * patches that modify semantic of the functions.
-	 */
-	if (mod && mod->klp_alive)
-		obj->mod = mod;
-
-	mutex_unlock(&module_mutex);
-}
-
 static bool klp_initialized(void)
 {
 	return !!klp_root_kobj;
@@ -246,18 +218,16 @@ static int klp_resolve_symbols(Elf_Shdr *relasec, struct module *pmod)
 	return 0;
 }
 
-static int klp_write_object_relocations(struct module *pmod,
-					struct klp_object *obj)
+static int klp_write_object_relocations(struct klp_object *obj)
 {
 	int i, cnt, ret = 0;
 	const char *objname, *secname;
 	char sec_objname[MODULE_NAME_LEN];
+	struct module *pmod;
 	Elf_Shdr *sec;
 
-	if (WARN_ON(!klp_is_object_loaded(obj)))
-		return -EINVAL;
-
 	objname = klp_is_module(obj) ? obj->name : "vmlinux";
+	pmod = obj->mod;
 
 	/* For each klp relocation section */
 	for (i = 1; i < pmod->klp_info->hdr.e_shnum; i++) {
@@ -419,8 +389,8 @@ static void klp_free_object_dynamic(struct klp_object *obj)
 
 static void klp_init_func_early(struct klp_object *obj,
 				struct klp_func *func);
-static void klp_init_object_early(struct klp_patch *patch,
-				  struct klp_object *obj);
+static int klp_init_object_early(struct klp_patch *patch,
+				 struct klp_object *obj);
 
 static struct klp_object *klp_alloc_object_dynamic(const char *name,
 						   struct klp_patch *patch)
@@ -662,7 +632,7 @@ static void klp_free_patch_finish(struct klp_patch *patch)
 
 	/* Put the module after the last access to struct klp_patch. */
 	if (!patch->forced)
-		module_put(patch->mod);
+		module_put(patch->obj->mod);
 }
 
 /*
@@ -725,30 +695,28 @@ static int klp_init_func(struct klp_object *obj, struct klp_func *func)
 }
 
 /* Arches may override this to finish any remaining arch-specific tasks */
-void __weak arch_klp_init_object_loaded(struct klp_patch *patch,
-					struct klp_object *obj)
+void __weak arch_klp_init_object_loaded(struct klp_object *obj)
 {
 }
 
 /* parts of the initialization that is done only when the object is loaded */
-static int klp_init_object_loaded(struct klp_patch *patch,
-				  struct klp_object *obj)
+static int klp_init_object_loaded(struct klp_object *obj)
 {
 	struct klp_func *func;
 	int ret;
 
 	mutex_lock(&text_mutex);
 
-	module_disable_ro(patch->mod);
-	ret = klp_write_object_relocations(patch->mod, obj);
+	module_disable_ro(obj->mod);
+	ret = klp_write_object_relocations(obj);
 	if (ret) {
-		module_enable_ro(patch->mod, true);
+		module_enable_ro(obj->mod, true);
 		mutex_unlock(&text_mutex);
 		return ret;
 	}
 
-	arch_klp_init_object_loaded(patch, obj);
-	module_enable_ro(patch->mod, true);
+	arch_klp_init_object_loaded(obj);
+	module_enable_ro(obj->mod, true);
 
 	mutex_unlock(&text_mutex);
 
@@ -792,11 +760,8 @@ static int klp_init_object(struct klp_patch *patch, struct klp_object *obj)
 		return -EINVAL;
 
 	obj->patched = false;
-	obj->mod = NULL;
 
-	klp_find_object_module(obj);
-
-	name = klp_is_module(obj) ? obj->name : "vmlinux";
+	name = obj->name ? obj->name : "vmlinux";
 	ret = kobject_add(&obj->kobj, &patch->kobj, "%s", name);
 	if (ret)
 		return ret;
@@ -807,8 +772,7 @@ static int klp_init_object(struct klp_patch *patch, struct klp_object *obj)
 			return ret;
 	}
 
-	if (klp_is_object_loaded(obj))
-		ret = klp_init_object_loaded(patch, obj);
+	ret = klp_init_object_loaded(obj);
 
 	return ret;
 }
@@ -820,20 +784,34 @@ static void klp_init_func_early(struct klp_object *obj,
 	list_add_tail(&func->node, &obj->func_list);
 }
 
-static void klp_init_object_early(struct klp_patch *patch,
+static int klp_init_object_early(struct klp_patch *patch,
 				  struct klp_object *obj)
 {
+	struct klp_func *func;
+
+	if (!obj->funcs)
+		return -EINVAL;
+
 	INIT_LIST_HEAD(&obj->func_list);
 	kobject_init(&obj->kobj, &klp_ktype_object);
 	list_add_tail(&obj->node, &patch->obj_list);
+
+	klp_for_each_func_static(obj, func) {
+		klp_init_func_early(obj, func);
+	}
+
+	if (obj->dynamic || try_module_get(obj->mod))
+		return 0;
+
+	return -ENODEV;
 }
 
 static int klp_init_patch_early(struct klp_patch *patch)
 {
-	struct klp_object *obj;
-	struct klp_func *func;
+	struct klp_object *obj = patch->obj;
 
-	if (!patch->objs)
+	/* Main patch module is always for vmlinux */
+	if (obj->name)
 		return -EINVAL;
 
 	INIT_LIST_HEAD(&patch->list);
@@ -844,21 +822,7 @@ static int klp_init_patch_early(struct klp_patch *patch)
 	INIT_WORK(&patch->free_work, klp_free_patch_work_fn);
 	init_completion(&patch->finish);
 
-	klp_for_each_object_static(patch, obj) {
-		if (!obj->funcs)
-			return -EINVAL;
-
-		klp_init_object_early(patch, obj);
-
-		klp_for_each_func_static(obj, func) {
-			klp_init_func_early(obj, func);
-		}
-	}
-
-	if (!try_module_get(patch->mod))
-		return -ENODEV;
-
-	return 0;
+	return klp_init_object_early(patch, obj);
 }
 
 static int klp_init_patch(struct klp_patch *patch)
@@ -866,7 +830,7 @@ static int klp_init_patch(struct klp_patch *patch)
 	struct klp_object *obj;
 	int ret;
 
-	ret = kobject_add(&patch->kobj, klp_root_kobj, "%s", patch->mod->name);
+	ret = kobject_add(&patch->kobj, klp_root_kobj, "%s", patch->obj->mod->name);
 	if (ret)
 		return ret;
 
@@ -886,6 +850,12 @@ static int klp_init_patch(struct klp_patch *patch)
 
 	return 0;
 }
+
+int klp_add_object(struct klp_object *obj)
+{
+	return 0;
+}
+EXPORT_SYMBOL_GPL(klp_add_object);
 
 static int __klp_disable_patch(struct klp_patch *patch)
 {
@@ -930,7 +900,7 @@ static int __klp_enable_patch(struct klp_patch *patch)
 	if (WARN_ON(patch->enabled))
 		return -EINVAL;
 
-	pr_notice("enabling patch '%s'\n", patch->mod->name);
+	pr_notice("enabling patch '%s'\n", patch->obj->patch_name);
 
 	klp_init_transition(patch, KLP_PATCHED);
 
@@ -944,9 +914,6 @@ static int __klp_enable_patch(struct klp_patch *patch)
 	smp_wmb();
 
 	klp_for_each_object(patch, obj) {
-		if (!klp_is_object_loaded(obj))
-			continue;
-
 		ret = klp_pre_patch_callback(obj);
 		if (ret) {
 			pr_warn("pre-patch callback failed for object '%s'\n",
@@ -968,7 +935,7 @@ static int __klp_enable_patch(struct klp_patch *patch)
 
 	return 0;
 err:
-	pr_warn("failed to enable patch '%s'\n", patch->mod->name);
+	pr_warn("failed to enable patch '%s'\n", patch->obj->patch_name);
 
 	klp_cancel_transition();
 	return ret;
@@ -991,12 +958,12 @@ int klp_enable_patch(struct klp_patch *patch)
 {
 	int ret;
 
-	if (!patch || !patch->mod)
+	if (!patch || !patch->obj || !patch->obj->mod)
 		return -EINVAL;
 
-	if (!is_livepatch_module(patch->mod)) {
+	if (!is_livepatch_module(patch->obj->mod)) {
 		pr_err("module %s is not marked as a livepatch module\n",
-		       patch->mod->name);
+		       patch->obj->patch_name);
 		return -EINVAL;
 	}
 
@@ -1012,7 +979,7 @@ int klp_enable_patch(struct klp_patch *patch)
 
 	if (!klp_is_patch_compatible(patch)) {
 		pr_err("Livepatch patch (%s) is not compatible with the already installed livepatches.\n",
-			patch->mod->name);
+			patch->obj->mod->name);
 		mutex_unlock(&klp_mutex);
 		return -EINVAL;
 	}
@@ -1119,7 +1086,7 @@ static void klp_cleanup_module_patches_limited(struct module *mod,
 				klp_pre_unpatch_callback(obj);
 
 			pr_notice("reverting patch '%s' on unloading module '%s'\n",
-				  patch->mod->name, obj->mod->name);
+				  patch->obj->patch_name, obj->name);
 			klp_unpatch_object(obj);
 
 			klp_post_unpatch_callback(obj);
@@ -1154,15 +1121,15 @@ int klp_module_coming(struct module *mod)
 
 			obj->mod = mod;
 
-			ret = klp_init_object_loaded(patch, obj);
+			ret = klp_init_object_loaded(obj);
 			if (ret) {
 				pr_warn("failed to initialize patch '%s' for module '%s' (%d)\n",
-					patch->mod->name, obj->mod->name, ret);
+					patch->obj->patch_name, obj->name, ret);
 				goto err;
 			}
 
 			pr_notice("applying patch '%s' to loading module '%s'\n",
-				  patch->mod->name, obj->mod->name);
+				  patch->obj->patch_name, obj->name);
 
 			ret = klp_pre_patch_callback(obj);
 			if (ret) {
@@ -1174,7 +1141,7 @@ int klp_module_coming(struct module *mod)
 			ret = klp_patch_object(obj);
 			if (ret) {
 				pr_warn("failed to apply patch '%s' to module '%s' (%d)\n",
-					patch->mod->name, obj->mod->name, ret);
+					patch->obj->patch_name, obj->name, ret);
 
 				klp_post_unpatch_callback(obj);
 				goto err;
@@ -1197,7 +1164,7 @@ err:
 	 * error to the module loader.
 	 */
 	pr_warn("patch '%s' failed for module '%s', refusing to load module '%s'\n",
-		patch->mod->name, obj->mod->name, obj->mod->name);
+		patch->obj->patch_name, obj->name, obj->name);
 	mod->klp_alive = false;
 	obj->mod = NULL;
 	klp_cleanup_module_patches_limited(mod, patch);

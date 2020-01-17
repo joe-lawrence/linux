@@ -9,8 +9,7 @@
 #include <asm/text-patching.h>
 
 /* Apply per-object alternatives. Based on x86 module_finalize() */
-void arch_klp_init_object_loaded(struct klp_patch *patch,
-				 struct klp_object *obj)
+void arch_klp_init_object_loaded(struct klp_object *obj)
 {
 	int cnt;
 	struct klp_modinfo *info;
@@ -20,7 +19,7 @@ void arch_klp_init_object_loaded(struct klp_patch *patch,
 	char sec_objname[MODULE_NAME_LEN];
 	char secname[KSYM_NAME_LEN];
 
-	info = patch->mod->klp_info;
+	info = obj->mod->klp_info;
 	objname = obj->name ? obj->name : "vmlinux";
 
 	/* See livepatch core code for BUILD_BUG_ON() explanation */
