@@ -626,6 +626,7 @@ void klp_copy_process(struct task_struct *child)
 void klp_force_transition(void)
 {
 	struct klp_patch *patch;
+	struct klp_object *obj;
 	struct task_struct *g, *task;
 	unsigned int cpu;
 
@@ -639,6 +640,9 @@ void klp_force_transition(void)
 	for_each_possible_cpu(cpu)
 		klp_update_patch_state(idle_task(cpu));
 
-	klp_for_each_patch(patch)
-		patch->forced = true;
+	klp_for_each_patch(patch) {
+		klp_for_each_object(patch, obj) {
+			obj->forced = true;
+		}
+	}
 }

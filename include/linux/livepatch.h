@@ -114,6 +114,7 @@ struct klp_callbacks {
  * @node:	list node for klp_patch obj_list
  * @dynamic:    temporary object for nop functions; dynamically allocated
  * @patched:	the object's funcs have been added to the klp_ops list
+ * @forced:	was involved in a forced transition
  */
 struct klp_object {
 	/* external */
@@ -129,6 +130,7 @@ struct klp_object {
 	struct list_head node;
 	bool dynamic;
 	bool patched;
+	bool forced;
 };
 
 /**
@@ -154,7 +156,6 @@ struct klp_state {
  * @kobj:	kobject for sysfs resources
  * @obj_list:	dynamic list of the object entries
  * @enabled:	the patch is enabled (but operation may be incomplete)
- * @forced:	was involved in a forced transition
  * ts:		timestamp when the livepatch has been loaded
  * @free_work:	patch cleanup from workqueue-context
  * @finish:	for waiting till it is safe to remove the patch module
@@ -171,7 +172,6 @@ struct klp_patch {
 	struct kobject kobj;
 	struct list_head obj_list;
 	bool enabled;
-	bool forced;
 	u64 ts;
 	struct work_struct free_work;
 	struct completion finish;
