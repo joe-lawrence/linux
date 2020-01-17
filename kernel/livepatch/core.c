@@ -1392,6 +1392,13 @@ void klp_module_going(struct module *mod)
 	klp_for_each_patch(patch) {
 		klp_for_each_object_safe(patch, obj, tmp_obj) {
 			if (obj->name && !strcmp(obj->name, mod->name)) {
+				/*
+				 * The livepatched module is about to be
+				 * destroyed. It's code is no longer used.
+				 * Same is true for the livepatch even when
+				 * it was part of forced transition.
+				 */
+				obj->forced = false;
 				klp_remove_object(obj);
 			}
 		}
