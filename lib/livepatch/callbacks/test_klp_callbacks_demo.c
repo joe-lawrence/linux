@@ -86,8 +86,8 @@ static struct klp_object obj = {
 };
 
 static char *obj_names[] = {
-	"test_klp_callbacks_mod",
-	"test_klp_callbacks_busy",
+	"test_klp_module",
+	"test_klp_busy_module",
 	NULL
 };
 

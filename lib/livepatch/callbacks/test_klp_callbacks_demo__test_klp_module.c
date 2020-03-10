@@ -14,7 +14,7 @@ static struct klp_func no_funcs[] = {
 
 static struct klp_object obj = {
 	.patch_name = LIVEPATCH_NAME,
-	.name = "test_klp_callbacks_mod",
+	.name = "test_klp_module",
 	.mod = THIS_MODULE,
 	.funcs = no_funcs,
 	.callbacks = {

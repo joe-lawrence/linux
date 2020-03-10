@@ -6,8 +6,8 @@
 
 MOD_LIVEPATCH=test_klp_callbacks_demo
 MOD_LIVEPATCH2=test_klp_callbacks_demo2
-MOD_TARGET=test_klp_callbacks_mod
-MOD_TARGET_BUSY=test_klp_callbacks_busy
+MOD_TARGET=test_klp_module
+MOD_TARGET_BUSY=test_klp_busy_module
 
 setup_config
 

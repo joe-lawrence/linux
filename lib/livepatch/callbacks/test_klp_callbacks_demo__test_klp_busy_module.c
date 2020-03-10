@@ -22,7 +22,7 @@ static struct klp_func busymod_funcs[] = {
 
 static struct klp_object obj = {
 	.patch_name = LIVEPATCH_NAME,
-	.name = "test_klp_callbacks_busy",
+	.name = "test_klp_busy_module",
 	.mod = THIS_MODULE,
 	.funcs = busymod_funcs,
 	.callbacks = {

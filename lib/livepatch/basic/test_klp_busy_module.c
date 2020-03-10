@@ -22,7 +22,7 @@ static void busymod_work_func(struct work_struct *work)
 	pr_info("%s exit\n", __func__);
 }
 
-static int test_klp_callbacks_busy_init(void)
+static int test_klp_busy_module_init(void)
 {
 	pr_info("%s\n", __func__);
 	schedule_delayed_work(&work,
@@ -30,14 +30,14 @@ static int test_klp_callbacks_busy_init(void)
 	return 0;
 }
 
-static void test_klp_callbacks_busy_exit(void)
+static void test_klp_busy_module_exit(void)
 {
 	cancel_delayed_work_sync(&work);
 	pr_info("%s\n", __func__);
 }
 
-module_init(test_klp_callbacks_busy_init);
-module_exit(test_klp_callbacks_busy_exit);
+module_init(test_klp_busy_module_init);
+module_exit(test_klp_busy_module_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Joe Lawrence <joe.lawrence@redhat.com>");
 MODULE_DESCRIPTION("Livepatch test: busy target module");
