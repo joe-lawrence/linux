@@ -6,6 +6,16 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 
+int get_klp_module_status(char *buffer, const struct kernel_param *kp)
+{
+        return scnprintf(buffer, PAGE_SIZE, "%s: status: unpatched\n", THIS_MODULE->name);
+}
+
+static const struct kernel_param_ops test_ops = {
+	.get = get_klp_module_status,
+};
+module_param_cb(status, &test_ops, NULL, 0444);
+
 static int test_klp_module_init(void)
 {
 	pr_info("%s\n", __func__);
