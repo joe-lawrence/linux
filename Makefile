@@ -590,10 +590,13 @@ KBUILD_BUILTIN := 1
 # If we have only "make modules", don't compile built-in objects.
 # When we're building modules with modversions, we need to consider
 # the built-in objects during the descend as well, in order to
-# make sure the checksums are up to date before we record them.
+# make sure the checksums are up to date before we record them. The
+# same applies for building livepatches, as built-in objects may hold
+# symbols which are referenced from livepatches and are required by
+# klp-convert post-processing tool for resolving these cases.
 
 ifeq ($(MAKECMDGOALS),modules)
-  KBUILD_BUILTIN := $(if $(CONFIG_MODVERSIONS),1)
+  KBUILD_BUILTIN := $(if $(or $(CONFIG_MODVERSIONS), $(CONFIG_LIVEPATCH)),1)
 endif
 
 # If we have "make <whatever> modules", compile modules
@@ -1278,8 +1281,24 @@ all: modules
 # duplicate lines in modules.order files.  Those are removed
 # using awk while concatenating to the final file.
 
+quiet_cmd_klp_map = KLP     Symbols.list
+SLIST = $(objtree)/Symbols.list
+
+define cmd_klp_map
+	$(shell echo "klp-convert-symbol-data.0.1" > $(SLIST))				\
+	$(shell echo "*vmlinux" >> $(SLIST))						\
+	$(shell nm -f posix $(objtree)/vmlinux | cut -d\  -f1 >> $(SLIST))		\
+	$(foreach ko, $(sort $(shell cat modules.order)),				\
+		$(eval mod = $(patsubst %.ko,%.mod,$(ko)))				\
+		$(eval obj = $(patsubst %.ko,%.o,$(ko)))				\
+		$(if $(shell grep -o LIVEPATCH $(mod)),,				\
+			$(shell echo "*$(shell basename -s .ko $(ko))" >> $(SLIST))	\
+			$(shell nm -f posix $(obj) | cut -d\  -f1 >> $(SLIST))))
+endef
+
 PHONY += modules
 modules: $(if $(KBUILD_BUILTIN),vmlinux) modules.order
+	$(if $(CONFIG_LIVEPATCH), $(call cmd,klp_map))
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/modules-check.sh
 
