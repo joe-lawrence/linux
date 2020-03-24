@@ -1002,7 +1002,8 @@ err:
 	 * error to the module loader.
 	 */
 	pr_warn("patch '%s' failed for module '%s', refusing to load module '%s'\n",
-		patch->obj->patch_name, obj->name, obj->name);
+		(patch && patch->obj && patch->obj->patch_name) ? patch->obj->patch_name : "N/A",
+		obj->name, obj->name);
 	mutex_unlock(&klp_mutex);
 	return ret;
 }
