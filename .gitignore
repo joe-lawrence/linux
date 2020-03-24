@@ -46,6 +46,7 @@
 Module.symvers
 modules.builtin
 modules.order
+Symbols.list
 
 #
 # Top-level generic files
