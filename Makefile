@@ -1015,6 +1015,7 @@ PHONY += prepare0
 
 export MODORDER := $(extmod-prefix)modules.order
 export MODULES_NSDEPS := $(extmod-prefix)modules.nsdeps
+export MODULES_LIVEPATCH := $(extmod-prefix)modules.livepatch
 
 ifeq ($(KBUILD_EXTMOD),)
 core-y		+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ block/
@@ -1281,23 +1282,8 @@ all: modules
 # duplicate lines in modules.order files.  Those are removed
 # using awk while concatenating to the final file.
 
-quiet_cmd_klp_map = KLP     symbols.klp
-
-define cmd_klp_map
-	$(shell echo "klp-convert-symbol-data.0.1" > $(objtree)/symbols.klp)				\
-	$(shell echo "*vmlinux" >> $(objtree)/symbols.klp)						\
-	$(shell nm -f posix $(objtree)/vmlinux | cut -d\  -f1 >> $(objtree)/symbols.klp)		\
-	$(foreach ko, $(sort $(shell cat modules.order)),						\
-		$(eval mod = $(patsubst %.ko,%.mod,$(ko)))						\
-		$(eval obj = $(patsubst %.ko,%.o,$(ko)))						\
-		$(if $(shell grep -o LIVEPATCH $(mod)),,						\
-			$(shell echo "*$(shell basename -s .ko $(ko))" >> $(objtree)/symbols.klp)	\
-			$(shell nm -f posix $(obj) | cut -d\  -f1 >> $(objtree)/symbols.klp)))
-endef
-
 PHONY += modules
 modules: $(if $(KBUILD_BUILTIN),vmlinux) modules.order
-	$(if $(CONFIG_LIVEPATCH), $(call cmd,klp_map))
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/modules-check.sh
 
