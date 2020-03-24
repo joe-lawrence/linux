@@ -2320,7 +2320,8 @@ static int apply_relocations(struct module *mod, const struct load_info *info)
 
 		/* Livepatch need to resolve static symbols. */
 		if (info->sechdrs[i].sh_flags & SHF_RELA_LIVEPATCH) {
-			err = klp_resolve_symbols(info->sechdrs, i, mod);
+			err = klp_resolve_symbols(info->sechdrs, info->strtab,
+						  info->index.sym, i, mod);
 			if (err < 0)
 				break;
 			err = apply_relocate_add(info->sechdrs, info->strtab,
