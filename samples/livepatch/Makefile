@@ -10,3 +10,4 @@ obj-$(CONFIG_SAMPLE_LIVEPATCH) += livepatch-callbacks-demo__livepatch-callbacks-
 obj-$(CONFIG_SAMPLE_LIVEPATCH) += livepatch-callbacks-demo__livepatch-callbacks-busymod.o
 obj-$(CONFIG_SAMPLE_LIVEPATCH) += livepatch-callbacks-mod.o
 obj-$(CONFIG_SAMPLE_LIVEPATCH) += livepatch-callbacks-busymod.o
+obj-$(CONFIG_SAMPLE_LIVEPATCH) += livepatch-annotated-sample.o
