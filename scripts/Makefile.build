@@ -262,13 +262,6 @@ else
 cmd_undef_syms = echo
 endif
 
-# Livepatch modules need special note
-ifdef CONFIG_LIVEPATCH
-cmd_livepatch = $(if $(LIVEPATCH_$(basetarget)), echo LIVEPATCH, echo)
-else
-cmd_livepatch = echo
-endif
-
 # Built-in and composite module parts
 $(obj)/%.o: $(src)/%.c $(recordmcount_source) $(objtool_dep) FORCE
 	$(call cmd,force_checksrc)
@@ -277,7 +270,6 @@ $(obj)/%.o: $(src)/%.c $(recordmcount_source) $(objtool_dep) FORCE
 cmd_mod = { \
 	echo $(if $($*-objs)$($*-y)$($*-m), $(addprefix $(obj)/, $($*-objs) $($*-y) $($*-m)), $(@:.mod=.o)); \
 	$(cmd_undef_syms); \
-	${cmd_livepatch}; \
 	} > $@
 
 $(obj)/%.mod: $(obj)/%.o FORCE
