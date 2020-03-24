@@ -212,6 +212,8 @@ int klp_module_coming(struct module *mod);
 void klp_module_going(struct module *mod);
 
 int klp_resolve_symbols(Elf_Shdr *sechdrs,
+			const char *strtab,
+			unsigned int symindex,
 			unsigned int relsec,
 			struct module *pmod);
 

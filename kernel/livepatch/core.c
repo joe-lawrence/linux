@@ -197,13 +197,14 @@ static int klp_find_object_symbol(const char *objname, const char *name,
 }
 
 int klp_resolve_symbols(Elf_Shdr *sechdrs,
+			const char *strtab,
+			unsigned int symindex,
 			unsigned int relsec,
 			struct module *pmod)
 {
 	int i, cnt, vmlinux, ret;
 	char objname[MODULE_NAME_LEN];
 	char symname[KSYM_NAME_LEN];
-	char *strtab = pmod->core_kallsyms.strtab;
 	Elf_Shdr *relasec = sechdrs + relsec;
 	Elf_Rela *relas;
 	Elf_Sym *sym;
@@ -224,7 +225,8 @@ int klp_resolve_symbols(Elf_Shdr *sechdrs,
 	relas = (Elf_Rela *) relasec->sh_addr;
 	/* For each rela in this klp relocation section */
 	for (i = 0; i < relasec->sh_size / sizeof(Elf_Rela); i++) {
-		sym = pmod->core_kallsyms.symtab + ELF_R_SYM(relas[i].r_info);
+		sym = (Elf64_Sym *)sechdrs[symindex].sh_addr +
+			ELF_R_SYM(relas[i].r_info);
 		if (sym->st_shndx != SHN_LIVEPATCH) {
 			pr_err("symbol %s is not marked as a livepatch symbol\n",
 			       strtab + sym->st_name);
