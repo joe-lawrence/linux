@@ -59,19 +59,20 @@ $(modules-klp): %.ko: %.tmp.ko FORCE
 targets += $(modules-klp:.ko=.tmp.ko)
 
 ifeq ($(KBUILD_EXTMOD),)
-# Read out modules.{order,livepatch} instead of expanding $(modules-no-klp).
+# Read out modules.{order,livepatch} instead of expanding $(modules).
 # Otherwise, allmodconfig would fail with "Argument list too long".
 filechk_klp_map = \
 	echo "klp-convert-symbol-data.0.1";		\
 	echo "*vmlinux";				\
 	$(NM) -f posix vmlinux | cut -d\  -f1;		\
 	sort $(MODORDER) $(MODULES_LIVEPATCH) |		\
-	uniq -u |					\
+	uniq |						\
 	sed 's/\.ko$$//' |    			  	\
 	while read o;					\
 	do						\
 		echo "*$$(basename $$o)";		\
-		$(NM) -f posix $$o.o | cut -d\  -f1;	\
+		$(NM) -f posix $$o.o |			\
+			awk '$$2 != "U" { print $$1 }';	\
 	done
 
 symbols.klp: FORCE
