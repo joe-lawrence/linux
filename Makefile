@@ -1281,8 +1281,8 @@ all: modules
 # duplicate lines in modules.order files.  Those are removed
 # using awk while concatenating to the final file.
 
-quiet_cmd_klp_map = KLP     Symbols.list
-SLIST = $(objtree)/Symbols.list
+quiet_cmd_klp_map = KLP     symbols.klp
+SLIST = $(objtree)/symbols.klp
 
 define cmd_klp_map
 	$(shell echo "klp-convert-symbol-data.0.1" > $(SLIST))				\
