@@ -6,7 +6,8 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/livepatch.h>
-#include "test_klp_callbacks_demo2.h"
+
+#define LIVEPATCH_NAME "test_klp_callbacks_demo2"
 
 static int replace;
 module_param(replace, int, 0644);
@@ -40,33 +41,29 @@ static void callback_info(const char *callback, struct klp_object *obj)
 }
 
 /* Executed on object patching (ie, patch enablement) */
-int pre_patch_callback2(struct klp_object *obj)
+static int pre_patch_callback2(struct klp_object *obj)
 {
 	callback_info(__func__, obj);
 	return 0;
 }
-EXPORT_SYMBOL(pre_patch_callback2);
 
 /* Executed on object unpatching (ie, patch disablement) */
-void post_patch_callback2(struct klp_object *obj)
+static void post_patch_callback2(struct klp_object *obj)
 {
 	callback_info(__func__, obj);
 }
-EXPORT_SYMBOL(post_patch_callback2);
 
 /* Executed on object unpatching (ie, patch disablement) */
-void pre_unpatch_callback2(struct klp_object *obj)
+static void pre_unpatch_callback2(struct klp_object *obj)
 {
 	callback_info(__func__, obj);
 }
-EXPORT_SYMBOL(pre_unpatch_callback2);
 
 /* Executed on object unpatching (ie, patch disablement) */
-void post_unpatch_callback2(struct klp_object *obj)
+static void post_unpatch_callback2(struct klp_object *obj)
 {
 	callback_info(__func__, obj);
 }
-EXPORT_SYMBOL(post_unpatch_callback2);
 
 static struct klp_func no_funcs[] = {
 	{ }
