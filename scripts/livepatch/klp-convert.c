@@ -617,6 +617,14 @@ static void free_converted_resources(struct elf *klp_elf)
 	}
 }
 
+/* Check for sections that klp-convert should ignore */
+static bool is_section_ignored(char *sname)
+{
+	if (strcmp(sname, ".rela__kcrctab") == 0)
+		return true;
+	return false;
+}
+
 int main(int argc, const char **argv)
 {
 	const char *klp_in_module, *klp_out_module, *symbols_list;
@@ -650,6 +658,7 @@ int main(int argc, const char **argv)
 
 	list_for_each_entry_safe(sec, aux, &klp_elf->sections, list) {
 		if (!is_rela_section(sec) ||
+		    is_section_ignored(sec->name) ||
 		    is_klp_rela_section(sec->name))
 			continue;
 
