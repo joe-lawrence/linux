@@ -9,6 +9,11 @@ MOD_REPLACE=test_klp_atomic_replace
 MOD_KLP_CONVERT_MOD=test_klp_convert_mod
 MOD_KLP_CONVERT1=test_klp_convert1
 MOD_KLP_CONVERT2=test_klp_convert2
+MOD_KLP_CONVERT1=test_klp_convert1
+MOD_KLP_CONVERT1_SUBMOD=test_klp_convert1__test_klp_convert_mod
+MOD_KLP_CONVERT2=test_klp_convert2
+MOD_KLP_CONVERT2_SUBMOD=test_klp_convert2__test_klp_convert_mod
+
 
 setup_config
 
@@ -194,14 +199,14 @@ unload_mod $MOD_KLP_CONVERT_MOD
 
 check_result "% modprobe $MOD_KLP_CONVERT_MOD
 % modprobe $MOD_KLP_CONVERT1
+$MOD_KLP_CONVERT1_SUBMOD: driver_name, 0: $MOD_KLP_CONVERT_MOD
+$MOD_KLP_CONVERT1_SUBMOD: get_driver_name(), 0: $MOD_KLP_CONVERT_MOD
+$MOD_KLP_CONVERT1_SUBMOD: homonym_string, 1: homonym string A
+$MOD_KLP_CONVERT1_SUBMOD: get_homonym_string(), 1: homonym string A
 livepatch: enabling patch '$MOD_KLP_CONVERT1'
 livepatch: '$MOD_KLP_CONVERT1': initializing patching transition
 livepatch: '$MOD_KLP_CONVERT1': starting patching transition
 $MOD_KLP_CONVERT1: saved_command_line, 0: $saved_cmdline
-$MOD_KLP_CONVERT1: driver_name, 0: $MOD_KLP_CONVERT_MOD
-$MOD_KLP_CONVERT1: get_driver_name(), 0: $MOD_KLP_CONVERT_MOD
-$MOD_KLP_CONVERT1: homonym_string, 1: homonym string A
-$MOD_KLP_CONVERT1: get_homonym_string(), 1: homonym string A
 livepatch: '$MOD_KLP_CONVERT1': completing patching transition
 livepatch: '$MOD_KLP_CONVERT1': patching complete
 % echo 0 > /sys/kernel/livepatch/$MOD_KLP_CONVERT1/enabled
@@ -211,14 +216,14 @@ livepatch: '$MOD_KLP_CONVERT1': completing unpatching transition
 livepatch: '$MOD_KLP_CONVERT1': unpatching complete
 % rmmod $MOD_KLP_CONVERT1
 % modprobe $MOD_KLP_CONVERT2
+$MOD_KLP_CONVERT2_SUBMOD: driver_name, 0: $MOD_KLP_CONVERT_MOD
+$MOD_KLP_CONVERT2_SUBMOD: get_driver_name(), (auto): $MOD_KLP_CONVERT_MOD
+$MOD_KLP_CONVERT2_SUBMOD: homonym_string, 2: homonym string B
+$MOD_KLP_CONVERT2_SUBMOD: get_homonym_string(), 2: homonym string B
 livepatch: enabling patch '$MOD_KLP_CONVERT2'
 livepatch: '$MOD_KLP_CONVERT2': initializing patching transition
 livepatch: '$MOD_KLP_CONVERT2': starting patching transition
 $MOD_KLP_CONVERT2: saved_command_line (auto): $saved_cmdline
-$MOD_KLP_CONVERT2: driver_name, 0: $MOD_KLP_CONVERT_MOD
-$MOD_KLP_CONVERT2: get_driver_name(), (auto): $MOD_KLP_CONVERT_MOD
-$MOD_KLP_CONVERT2: homonym_string, 2: homonym string B
-$MOD_KLP_CONVERT2: get_homonym_string(), 2: homonym string B
 livepatch: '$MOD_KLP_CONVERT2': completing patching transition
 livepatch: '$MOD_KLP_CONVERT2': patching complete
 % echo 0 > /sys/kernel/livepatch/$MOD_KLP_CONVERT2/enabled

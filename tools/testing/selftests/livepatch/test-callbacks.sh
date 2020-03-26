@@ -62,7 +62,6 @@ livepatch: '$MOD_LIVEPATCH': unpatching complete
 % rmmod $MOD_TARGET
 $MOD_TARGET: ${MOD_TARGET}_exit"
 
-
 # TEST: module_coming notifier
 #
 # This test is similar to the previous test, but (un)load the livepatch
