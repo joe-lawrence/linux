@@ -105,7 +105,7 @@ struct klp_callbacks {
 /**
  * struct klp_object - kernel object structure for live patching
  * @name:	module name (or NULL for vmlinux)
- * @patch_name:	module name for  vmlinux
+ * @patch_name:	module name (or NULL for vmlinux)
  * @mod:	reference to the live patch module for this object
  * @funcs:	function entries for functions to be patched in the object
  * @callbacks:	functions to be executed pre/post (un)patching
@@ -146,7 +146,7 @@ struct klp_state {
 /**
  * struct klp_patch - patch structure for live patching
  * @patch_name: livepatch name; same for related livepatch against other objects
- * @objs:	object entry for vmlinux object
+ * @obj:	object entry for vmlinux object
  * @obj_names:	names of modules synchronously livepatched with this patch
  * @states:	system states that can get modified
  * @replace:	replace all actively used patches
