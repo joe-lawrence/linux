@@ -962,7 +962,7 @@ static bool klp_is_object_compatible(struct klp_patch *patch,
 	mutex_unlock(&module_mutex);
 
 	if (!patched_mod) {
-		pr_err("Livepatched module is not loaded: %s\n", obj->name);
+		pr_err("Cannot livepatch unloaded module: %s\n", obj->name);
 		return false;
 	}
 
@@ -982,7 +982,7 @@ int klp_add_object(struct klp_object *obj)
 
 	patch = klp_find_patch(obj->patch_name);
 	if (!patch) {
-		pr_err("Can't load livepatch (%s) for module when the livepatch (%s) for vmcore is not loaded\n",
+		pr_err("Can't load livepatch (%s) for module when the livepatch (%s) for vmlinux is not loaded\n",
 		       obj->mod->name, obj->patch_name);
 		ret = -EINVAL;
 		goto err;
