@@ -2,10 +2,11 @@
 
 TEST_PROGS_EXTENDED := functions.sh
 TEST_PROGS := \
-	test-livepatch.sh \
+	test-basic.sh \
 	test-callbacks.sh \
+	test-ftrace.sh \
+	test-klp-convert.sh \
 	test-shadow-vars.sh \
-	test-state.sh \
-	test-ftrace.sh
+	test-state.sh 
 
 include ../lib.mk
