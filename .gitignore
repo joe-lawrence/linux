@@ -45,6 +45,7 @@
 *.xz
 Module.symvers
 modules.builtin
+modules.livepatch
 modules.order
 
 #
