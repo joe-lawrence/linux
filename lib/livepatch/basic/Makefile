@@ -4,6 +4,8 @@
 
 obj-$(CONFIG_TEST_LIVEPATCH) += \
 	test_klp_livepatch.o \
+	test_klp_livepatch2.o \
+	test_klp_livepatch2__test_klp_module.o \
 	test_klp_busy_module.o \
 	test_klp_module.o
 

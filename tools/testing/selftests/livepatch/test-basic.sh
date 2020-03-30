@@ -5,6 +5,9 @@
 . $(dirname $0)/functions.sh
 
 MOD_LIVEPATCH=test_klp_livepatch
+MOD_TARGET=test_klp_module
+MOD_LIVEPATCH2=test_klp_livepatch2
+MOD_LIVEPATCH2_MOD=test_klp_livepatch2__test_klp_module
 MOD_REPLACE=test_klp_atomic_replace
 
 setup_config
@@ -45,6 +48,65 @@ livepatch: '$MOD_LIVEPATCH': starting unpatching transition
 livepatch: '$MOD_LIVEPATCH': completing unpatching transition
 livepatch: '$MOD_LIVEPATCH': unpatching complete
 % rmmod $MOD_LIVEPATCH"
+
+
+# TEST: basic target module patching
+# - load a target module that provides a simple sysfs status interface
+# - load livepatch modules that patch the sysfs interface
+# - unload the livepatch modules
+# - verify original sysfs interface
+
+echo -n "TEST: basic target module patching ... "
+dmesg -C
+
+load_mod $MOD_TARGET
+
+load_lp $MOD_LIVEPATCH2
+
+if [[ "$(cat /sys/module/${MOD_TARGET}/parameters/status)" != "$MOD_LIVEPATCH2_MOD: status: livepatched" ]] ; then
+	echo -e "FAIL\n\n"
+	die "livepatch kselftest(s) failed"
+fi
+
+disable_lp $MOD_LIVEPATCH2
+unload_lp $MOD_LIVEPATCH2
+
+if [[ "$(cat /sys/module/${MOD_TARGET}/parameters/status)" != "$MOD_TARGET: status: unpatched" ]] ; then
+	echo -e "FAIL\n\n"
+	die "livepatch kselftest(s) failed"
+fi
+
+unload_mod $MOD_TARGET
+
+check_result "% modprobe $MOD_TARGET
+$MOD_TARGET: ${MOD_TARGET}_init
+% modprobe $MOD_LIVEPATCH2
+livepatch: enabling patch '$MOD_LIVEPATCH2'
+livepatch: '$MOD_LIVEPATCH2': initializing patching transition
+livepatch: '$MOD_LIVEPATCH2': starting patching transition
+livepatch: '$MOD_LIVEPATCH2': completing patching transition
+livepatch: '$MOD_LIVEPATCH2': patching complete
+% echo 0 > /sys/kernel/livepatch/${MOD_LIVEPATCH2}/enabled
+livepatch: '$MOD_LIVEPATCH2': initializing unpatching transition
+livepatch: '$MOD_LIVEPATCH2': starting unpatching transition
+livepatch: '$MOD_LIVEPATCH2': completing unpatching transition
+livepatch: '$MOD_LIVEPATCH2': unpatching complete
+% rmmod $MOD_LIVEPATCH2
+% rmmod $MOD_TARGET
+$MOD_TARGET: ${MOD_TARGET}_exit"
+
+
+# TEST: lone livepatch sub-module
+# - try to load a livepatch sub-module without its parent module
+echo -n "TEST: lone livepatch sub-module ... "
+dmesg -C
+
+load_failing_mod $MOD_LIVEPATCH2_MOD
+
+check_result "% modprobe $MOD_LIVEPATCH2_MOD
+livepatch: Can't load livepatch ($MOD_LIVEPATCH2_MOD) for module when the livepatch ($MOD_LIVEPATCH2) for vmlinux is not loaded
+livepatch: patch 'N/A' failed for module 'test_klp_module', refusing to load module 'test_klp_module'
+modprobe: ERROR: could not insert '$MOD_LIVEPATCH2_MOD': Invalid argument"
 
 
 # TEST: multiple livepatches
