@@ -669,7 +669,7 @@ int main(int argc, const char **argv)
 		    is_section_ignored(sec->name) ||
 		    is_klp_rela_section(sec->name))
 			continue;
-
+printf("section: %s\n", sec->name);
 		list_for_each_entry_safe(rela, tmprela, &sec->relas, list) {
 			if (!must_convert(rela->sym))
 				continue;
@@ -690,8 +690,10 @@ int main(int argc, const char **argv)
 
 		/* Now move all converted relas in list-safe manner  */
 		list_for_each_entry_safe(rela, tmprela, &sec->relas, list) {
-			if (is_converted(rela->sym->name))
+			if (is_converted(rela->sym->name)) {
+printf("\tmove_rela(%p): %s (%p)\n", rela, rela->sym->name, rela->sym);
 				move_rela(rela);
+			}
 		}
 	}
 

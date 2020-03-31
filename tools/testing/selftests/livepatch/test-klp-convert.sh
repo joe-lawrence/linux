@@ -11,6 +11,9 @@ MOD_KLP_CONVERT1=test_klp_convert1
 MOD_KLP_CONVERT1_SUBMOD=test_klp_convert1__test_klp_convert_mod
 MOD_KLP_CONVERT2=test_klp_convert2
 MOD_KLP_CONVERT2_SUBMOD=test_klp_convert2__test_klp_convert_mod
+MOD_KLP_ALT_MOD=test_klp_alt_mod
+MOD_KLP_ALT=test_klp_alt
+MOD_KLP_ALT_SUBMOD=test_klp_alt__test_klp_alt_mod
 
 
 setup_config
@@ -76,5 +79,51 @@ livepatch: '$MOD_KLP_CONVERT2': completing unpatching transition
 livepatch: '$MOD_KLP_CONVERT2': unpatching complete
 % rmmod $MOD_KLP_CONVERT2
 % rmmod $MOD_KLP_CONVERT_MOD"
+
+# TEST: klp-convert alternative instructions
+echo -n "TEST: klp-convert alternative instructions ... "
+dmesg -C
+
+load_lp $MOD_KLP_ALT
+load_mod $MOD_KLP_ALT_MOD
+unload_mod $MOD_KLP_ALT_MOD
+disable_lp $MOD_KLP_ALT
+unload_lp $MOD_KLP_ALT
+
+check_result "% modprobe $MOD_KLP_ALT
+livepatch: enabling patch '$MOD_KLP_ALT'
+livepatch: '$MOD_KLP_ALT': initializing patching transition
+livepatch: '$MOD_KLP_ALT': starting patching transition
+livepatch: '$MOD_KLP_ALT': completing patching transition
+livepatch: '$MOD_KLP_ALT': patching complete
+% modprobe $MOD_KLP_ALT_MOD
+livepatch: applying patch '$MOD_KLP_ALT' to loading module '$MOD_KLP_ALT_MOD'
+$MOD_KLP_ALT_SUBMOD: klp_function2
+$MOD_KLP_ALT_SUBMOD: klp_function1
+$MOD_KLP_ALT_MOD: mod_function2
+$MOD_KLP_ALT_MOD: mod_function1
+$MOD_KLP_ALT_MOD: mod_function1
+$MOD_KLP_ALT_MOD: mod_function2
+$MOD_KLP_ALT_SUBMOD: klp_function2
+$MOD_KLP_ALT_SUBMOD: klp_function1
+$MOD_KLP_ALT_MOD: mod_function2
+$MOD_KLP_ALT_MOD: mod_function1
+$MOD_KLP_ALT_MOD: mod_function1
+$MOD_KLP_ALT_MOD: mod_function2
+% rmmod $MOD_KLP_ALT_MOD
+$MOD_KLP_ALT_SUBMOD: klp_function2
+$MOD_KLP_ALT_SUBMOD: klp_function1
+$MOD_KLP_ALT_MOD: mod_function2
+$MOD_KLP_ALT_MOD: mod_function1
+$MOD_KLP_ALT_MOD: mod_function1
+$MOD_KLP_ALT_MOD: mod_function2
+livepatch: reverting patch '$MOD_KLP_ALT' on unloading module '$MOD_KLP_ALT_MOD'
+% echo 0 > /sys/kernel/livepatch/$MOD_KLP_ALT/enabled
+livepatch: '$MOD_KLP_ALT': initializing unpatching transition
+livepatch: '$MOD_KLP_ALT': starting unpatching transition
+livepatch: '$MOD_KLP_ALT': completing unpatching transition
+livepatch: '$MOD_KLP_ALT': unpatching complete
+% rmmod $MOD_KLP_ALT"
+
 
 exit 0
