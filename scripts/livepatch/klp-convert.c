@@ -450,8 +450,9 @@ static struct section *get_or_create_klp_rela_section(struct section *oldsec,
 }
 
 /* Converts rela symbol names */
-static bool convert_klp_symbol(struct symbol *s, struct sympos *sp)
+static struct symbol *convert_klp_symbol(struct symbol *s, struct sympos *sp)
 {
+	struct symbol *new_s;
 	char *name;
 	char pos[4];	/* assume that pos will never be > 999 */
 	unsigned int length;
@@ -459,7 +460,7 @@ static bool convert_klp_symbol(struct symbol *s, struct sympos *sp)
 	if (snprintf(pos, sizeof(pos), "%d", sp->pos) > sizeof(pos)) {
 		WARN("Insufficient buffer for expanding sympos (%s.%s,%d)\n",
 				sp->object_name, sp->symbol_name, sp->pos);
-		return false;
+		return NULL;
 	}
 
 	length = strlen(KLP_SYM_PREFIX) + strlen(sp->object_name)
@@ -469,7 +470,7 @@ static bool convert_klp_symbol(struct symbol *s, struct sympos *sp)
 	if (!name) {
 		WARN("Memory allocation failed (%s%s.%s,%s)\n", KLP_SYM_PREFIX,
 				sp->object_name, sp->symbol_name, pos);
-		return false;
+		return NULL;
 	}
 
 	if (snprintf(name, length, KLP_SYM_PREFIX "%s.%s,%s", sp->object_name,
@@ -478,20 +479,20 @@ static bool convert_klp_symbol(struct symbol *s, struct sympos *sp)
 		WARN("Length error (%s%s.%s,%s)", KLP_SYM_PREFIX,
 				sp->object_name, sp->symbol_name, pos);
 
-		return false;
+		return NULL;
 	}
 
-	/*
-	 * Despite the memory waste, we don't mind freeing the original symbol
-	 * name memory chunk. Keeping it there is harmless and, since removing
-	 * bytes from the string section is non-trivial, it is unworthy.
-	 */
-	s->name = name;
-	s->sec = NULL;
-	s->sym.st_name = -1;
-	s->sym.st_shndx = SHN_LIVEPATCH;
+	new_s = malloc(sizeof(*new_s));
+	memset(new_s, 0, sizeof(*new_s));
 
-	return true;
+	*new_s = *s;
+	new_s->name = name;
+	new_s->sec = NULL;
+	new_s->sym.st_name = -1;
+	new_s->sym.st_shndx = SHN_LIVEPATCH;
+	new_s->replaced = false;
+
+	return new_s;
 }
 
 /*
@@ -501,8 +502,8 @@ static bool convert_klp_symbol(struct symbol *s, struct sympos *sp)
 static bool convert_rela(struct section *oldsec, struct rela *r,
 		struct sympos *sp, struct elf *klp_elf)
 {
+	struct symbol *new_sym;
 	struct section *sec;
-	struct rela *r1, *r2;
 
 	sec = get_or_create_klp_rela_section(oldsec, sp, klp_elf);
 	if (!sec) {
@@ -511,23 +512,18 @@ static bool convert_rela(struct section *oldsec, struct rela *r,
 		return false;
 	}
 
-	if (!convert_klp_symbol(r->sym, sp)) {
+	new_sym = convert_klp_symbol(r->sym, sp);
+	if (!new_sym) {
 		WARN("Unable to convert symbol name (%s.%s)\n", sec->name,
 				r->sym->name);
 		return false;
 	}
 
-	/*
-	 * Iterate through the rest of this section's relas and see if
-	 * there are similar symbols.  Set them up to move to the same
-	 * klp_rela_section, too.
-	 */
+	r->sym->replaced = true;
+	r->sym = new_sym;
+	r->klp_rela_sec = sec;
+	list_add_tail(&new_sym->list, &klp_elf->symbols);
 
-	list_for_each_entry_safe(r1, r2, &oldsec->relas, list) {
-		if (r1->sym->name == r->sym->name) {
-			r1->klp_rela_sec = sec;
-		}
-	}
 	return true;
 }
 
@@ -536,6 +532,18 @@ static void move_rela(struct rela *r)
 	/* Move the converted rela to klp rela section */
 	list_del(&r->list);
 	list_add(&r->list, &r->klp_rela_sec->relas);
+}
+
+static void remove_replaced_syms(struct elf *klp_elf)
+{
+	struct symbol *sym, *tmpsym;
+
+	list_for_each_entry_safe(sym, tmpsym, &klp_elf->symbols, list) {
+		if (sym->replaced) {
+			list_del(&sym->list);
+			free(sym);
+		}
+	}
 }
 
 /* Checks if given symbol name matches a symbol in exp_symbols */
@@ -704,6 +712,9 @@ int main(int argc, const char **argv)
 				move_rela(rela);
 		}
 	}
+
+	/* Converted relas no longer need their original symbols */
+	remove_replaced_syms(klp_elf);
 
 	free_syms_lists();
 	if (elf_write_file(klp_elf, klp_out_module))
