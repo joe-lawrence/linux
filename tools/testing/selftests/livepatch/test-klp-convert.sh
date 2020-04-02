@@ -14,6 +14,9 @@ MOD_KLP_CONVERT2_SUBMOD=test_klp_convert2__test_klp_convert_mod
 MOD_KLP_ALT_MOD=test_klp_alt_mod
 MOD_KLP_ALT=test_klp_alt
 MOD_KLP_ALT_SUBMOD=test_klp_alt__test_klp_alt_mod
+MOD_KLP_KEYS_MOD=test_klp_keys_mod
+MOD_KLP_KEYS=test_klp_keys
+MOD_KLP_KEYS_SUBMOD=test_klp_keys__test_klp_keys_mod
 
 
 setup_config
@@ -125,5 +128,66 @@ livepatch: '$MOD_KLP_ALT': completing unpatching transition
 livepatch: '$MOD_KLP_ALT': unpatching complete
 % rmmod $MOD_KLP_ALT"
 
+# TEST: klp-convert static keys
+# - load a module which defines static keys, updates one of the keys on
+#   load (forcing jump table patching)
+# - load a livepatch that references the same keys, resolved by
+#   klp-convert tool
+# - poke the livepatch sysfs interface to update one of the key (forcing
+#   jump table patching again)
+# - disable and unload the livepatch
+# - remove the module
+
+echo -n "TEST: klp-convert static keys ... "
+dmesg -C
+
+load_mod $MOD_KLP_KEYS_MOD
+load_lp $MOD_KLP_KEYS
+
+echo 1 > /sys/module/${MOD_KLP_KEYS_SUBMOD}/parameters/enable_false_key
+
+disable_lp $MOD_KLP_KEYS
+unload_lp $MOD_KLP_KEYS
+unload_mod $MOD_KLP_KEYS_MOD
+
+check_result "% modprobe $MOD_KLP_KEYS_MOD
+$MOD_KLP_KEYS_MOD: print_key_status: initial conditions
+$MOD_KLP_KEYS_MOD: static_key_enabled(&test_klp_true_key) is true
+$MOD_KLP_KEYS_MOD: static_key_enabled(&test_klp_false_key) is false
+$MOD_KLP_KEYS_MOD: static_branch_likely(&test_klp_true_key) is true
+$MOD_KLP_KEYS_MOD: static_branch_unlikely(&test_klp_false_key) is false
+$MOD_KLP_KEYS_MOD: print_key_status: disabled test_klp_true_key
+$MOD_KLP_KEYS_MOD: static_key_enabled(&test_klp_true_key) is false
+$MOD_KLP_KEYS_MOD: static_key_enabled(&test_klp_false_key) is false
+$MOD_KLP_KEYS_MOD: static_branch_likely(&test_klp_true_key) is false
+$MOD_KLP_KEYS_MOD: static_branch_unlikely(&test_klp_false_key) is false
+% modprobe $MOD_KLP_KEYS
+livepatch: enabling patch '$MOD_KLP_KEYS'
+livepatch: '$MOD_KLP_KEYS': initializing patching transition
+livepatch: '$MOD_KLP_KEYS': starting patching transition
+livepatch: '$MOD_KLP_KEYS': completing patching transition
+livepatch: '$MOD_KLP_KEYS': patching complete
+$MOD_KLP_KEYS_SUBMOD: print_key_status: set_enable_false_key start
+$MOD_KLP_KEYS_SUBMOD: static_key_enabled(&test_klp_true_key) is false
+$MOD_KLP_KEYS_SUBMOD: static_key_enabled(&test_klp_false_key) is false
+$MOD_KLP_KEYS_SUBMOD: static_branch_likely(&test_klp_true_key) is false
+$MOD_KLP_KEYS_SUBMOD: static_branch_unlikely(&test_klp_false_key) is false
+$MOD_KLP_KEYS_SUBMOD: print_key_status: set_enable_false_key enabling test_klp_false_key
+$MOD_KLP_KEYS_SUBMOD: static_key_enabled(&test_klp_true_key) is false
+$MOD_KLP_KEYS_SUBMOD: static_key_enabled(&test_klp_false_key) is true
+$MOD_KLP_KEYS_SUBMOD: static_branch_likely(&test_klp_true_key) is false
+$MOD_KLP_KEYS_SUBMOD: static_branch_unlikely(&test_klp_false_key) is true
+% echo 0 > /sys/kernel/livepatch/$MOD_KLP_KEYS/enabled
+livepatch: '$MOD_KLP_KEYS': initializing unpatching transition
+livepatch: '$MOD_KLP_KEYS': starting unpatching transition
+livepatch: '$MOD_KLP_KEYS': completing unpatching transition
+livepatch: '$MOD_KLP_KEYS': unpatching complete
+% rmmod $MOD_KLP_KEYS
+% rmmod $MOD_KLP_KEYS_MOD
+$MOD_KLP_KEYS_MOD: print_key_status: unloading conditions
+$MOD_KLP_KEYS_MOD: static_key_enabled(&test_klp_true_key) is false
+$MOD_KLP_KEYS_MOD: static_key_enabled(&test_klp_false_key) is true
+$MOD_KLP_KEYS_MOD: static_branch_likely(&test_klp_true_key) is false
+$MOD_KLP_KEYS_MOD: static_branch_unlikely(&test_klp_false_key) is true"
 
 exit 0
