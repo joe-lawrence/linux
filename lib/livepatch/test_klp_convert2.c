@@ -13,7 +13,7 @@ extern char *saved_command_line;
 extern char driver_name[];
 extern char homonym_string[];
 extern const char *get_homonym_string(void);
-extern const char *get_driver_name(void);
+extern const char *test_klp_get_driver_name(void);
 
 void print_saved_command_line(void)
 {
@@ -23,7 +23,7 @@ void print_saved_command_line(void)
 void print_driver_name(void)
 {
 	pr_info("driver_name, 0: %s\n", driver_name);
-	pr_info("get_driver_name(), (auto): %s\n", get_driver_name());
+	pr_info("test_klp_get_driver_name(), (auto): %s\n", test_klp_get_driver_name());
 }
 
 void print_homonym_string(void)
@@ -47,7 +47,7 @@ void print_homonym_string(void)
  * test_klp_convert1.c resolved to the first one, resolve to the
  * second one here.
  *
- * get_driver_name is a uniquely named symbol, test klp-convert can
+ * test_klp_get_driver_name is a uniquely named symbol, test klp-convert can
  * resolve it automatically.
  */
 KLP_MODULE_RELOC(test_klp_convert_mod) test_klp_convert_mod_relocs_a[] = {

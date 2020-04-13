@@ -13,7 +13,7 @@ extern char *saved_command_line;
 extern char driver_name[];
 extern char homonym_string[];
 extern const char *get_homonym_string(void);
-extern const char *get_driver_name(void);
+extern const char *test_klp_get_driver_name(void);
 
 void print_saved_command_line(void)
 {
@@ -23,7 +23,7 @@ void print_saved_command_line(void)
 void print_driver_name(void)
 {
 	pr_info("driver_name, 0: %s\n", driver_name);
-	pr_info("get_driver_name(), 0: %s\n", get_driver_name());
+	pr_info("test_klp_get_driver_name(), 0: %s\n", test_klp_get_driver_name());
 }
 
 void print_homonym_string(void)
@@ -49,14 +49,14 @@ KLP_MODULE_RELOC(vmlinux) vmlinux_relocs[] = {
  * get_homonym_string symbols, test resolving the first set here and
  *  the others in test_klp_convert2.c
  *
- * get_driver_name is a uniquely named symbol, test that sympos=0
+ * test_klp_get_driver_name is a uniquely named symbol, test that sympos=0
  * work correctly.
  */
 KLP_MODULE_RELOC(test_klp_convert_mod) test_klp_convert_mod_relocs_a[] = {
 	KLP_SYMPOS(driver_name, 0),
 	KLP_SYMPOS(homonym_string, 1),
 	KLP_SYMPOS(get_homonym_string, 1),
-	KLP_SYMPOS(get_driver_name, 0),
+	KLP_SYMPOS(test_klp_get_driver_name, 0),
 };
 
 static struct klp_func funcs[] = {
