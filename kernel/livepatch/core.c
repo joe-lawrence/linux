@@ -741,12 +741,6 @@ static int klp_init_func(struct klp_object *obj, struct klp_func *func)
 			   func->old_sympos ? func->old_sympos : 1);
 }
 
-/* Arches may override this to finish any remaining arch-specific tasks */
-void __weak arch_klp_init_object_loaded(struct klp_patch *patch,
-					struct klp_object *obj)
-{
-}
-
 /* parts of the initialization that is done only when the object is loaded */
 static int klp_init_object_loaded(struct klp_patch *patch,
 				  struct klp_object *obj)
@@ -755,10 +749,11 @@ static int klp_init_object_loaded(struct klp_patch *patch,
 	int ret;
 	struct klp_modinfo *info = patch->mod->klp_info;
 
-	mutex_lock(&text_mutex);
-	module_disable_ro(patch->mod);
-
 	if (klp_is_module(obj)) {
+
+		mutex_lock(&text_mutex);
+		module_disable_ro(patch->mod);
+
 		/*
 		 * Only write module-specific relocations here
 		 * (.klp.rela.{module}.*).  vmlinux-specific relocations were
@@ -770,17 +765,13 @@ static int klp_init_object_loaded(struct klp_patch *patch,
 					    patch->mod->core_kallsyms.strtab,
 					    info->symndx, patch->mod,
 					    obj->name);
-		if (ret) {
-			module_enable_ro(patch->mod, true);
-			mutex_unlock(&text_mutex);
+
+		module_enable_ro(patch->mod, true);
+		mutex_unlock(&text_mutex);
+
+		if (ret)
 			return ret;
-		}
 	}
-
-	arch_klp_init_object_loaded(patch, obj);
-
-	module_enable_ro(patch->mod, true);
-	mutex_unlock(&text_mutex);
 
 	klp_for_each_func(obj, func) {
 		ret = klp_find_object_symbol(obj->name, func->old_name,
