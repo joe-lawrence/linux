@@ -237,8 +237,8 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 				   write);
 
 	if (!early) {
-		mutex_unlock(&text_mutex);
 		text_poke_sync();
+		mutex_unlock(&text_mutex);
 	}
 
 	return ret;
