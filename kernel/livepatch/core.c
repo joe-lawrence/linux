@@ -285,49 +285,37 @@ static int klp_resolve_symbols(Elf64_Shdr *sechdrs, const char *strtab,
  *    the to-be-patched module to be loaded and patched sometime *after* the
  *    klp module is loaded.
  */
-int klp_write_relocations(Elf_Ehdr *ehdr, Elf_Shdr *sechdrs,
-			  const char *shstrtab, const char *strtab,
-			  unsigned int symndx, struct module *pmod,
-			  const char *objname)
+int klp_apply_section_relocs(struct module *pmod, Elf_Shdr *sechdrs,
+			     const char *shstrtab, const char *strtab,
+			     unsigned int symndx, unsigned int secndx,
+			     const char *objname)
 {
-	int i, cnt, ret = 0;
+	int cnt, ret;
 	char sec_objname[MODULE_NAME_LEN];
-	Elf_Shdr *sec;
+	Elf_Shdr *sec = sechdrs + secndx;
 
-	/* For each klp relocation section */
-	for (i = 1; i < ehdr->e_shnum; i++) {
-		sec = sechdrs + i;
-		if (!(sec->sh_flags & SHF_RELA_LIVEPATCH))
-			continue;
-
-		/*
-		 * Format: .klp.rela.sec_objname.section_name
-		 * See comment in klp_resolve_symbols() for an explanation
-		 * of the selected field width value.
-		 */
-		cnt = sscanf(shstrtab + sec->sh_name, KLP_RELA_PREFIX "%55[^.]",
-			     sec_objname);
-		if (cnt != 1) {
-			pr_err("section %s has an incorrectly formatted name\n",
-			       shstrtab + sec->sh_name);
-			ret = -EINVAL;
-			break;
-		}
-
-		if (strcmp(objname ? objname : "vmlinux", sec_objname))
-			continue;
-
-		ret = klp_resolve_symbols(sechdrs, strtab, symndx, sec,
-					  sec_objname);
-		if (ret)
-			break;
-
-		ret = apply_relocate_add(sechdrs, strtab, symndx, i, pmod);
-		if (ret)
-			break;
+	/*
+	 * Format: .klp.rela.sec_objname.section_name
+	 * See comment in klp_resolve_symbols() for an explanation
+	 * of the selected field width value.
+	 */
+	cnt = sscanf(shstrtab + sec->sh_name, KLP_RELA_PREFIX "%55[^.]",
+		     sec_objname);
+	if (cnt != 1) {
+		pr_err("section %s has an incorrectly formatted name\n",
+		       shstrtab + sec->sh_name);
+		return -EINVAL;
 	}
 
-	return ret;
+	if (strcmp(objname ? objname : "vmlinux", sec_objname))
+		return 0;
+
+	ret = klp_resolve_symbols(sechdrs, strtab, symndx, sec,
+				  sec_objname);
+	if (ret)
+		return ret;
+
+	return apply_relocate_add(sechdrs, strtab, symndx, secndx, pmod);
 }
 
 /*
@@ -758,13 +746,34 @@ static int klp_init_func(struct klp_object *obj, struct klp_func *func)
 			   func->old_sympos ? func->old_sympos : 1);
 }
 
+int klp_apply_object_relocs(struct klp_patch *patch, struct klp_object *obj)
+{
+	int i, ret;
+	struct klp_modinfo *info = patch->mod->klp_info;
+
+	for (i = 1; i < info->hdr.e_shnum; i++) {
+		Elf_Shdr *sec = info->sechdrs + i;
+
+		if (!(sec->sh_flags & SHF_RELA_LIVEPATCH))
+			continue;
+
+		ret = klp_apply_section_relocs(patch->mod, info->sechdrs,
+					       info->secstrings,
+					       patch->mod->core_kallsyms.strtab,
+					       info->symndx, i, obj->name);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 /* parts of the initialization that is done only when the object is loaded */
 static int klp_init_object_loaded(struct klp_patch *patch,
 				  struct klp_object *obj)
 {
 	struct klp_func *func;
 	int ret;
-	struct klp_modinfo *info = patch->mod->klp_info;
 
 	if (klp_is_module(obj)) {
 		/*
@@ -773,11 +782,7 @@ static int klp_init_object_loaded(struct klp_patch *patch,
 		 * written earlier during the initialization of the klp module
 		 * itself.
 		 */
-		ret = klp_write_relocations(&info->hdr, info->sechdrs,
-					    info->secstrings,
-					    patch->mod->core_kallsyms.strtab,
-					    info->symndx, patch->mod,
-					    obj->name);
+		ret = klp_apply_object_relocs(patch, obj);
 		if (ret)
 			return ret;
 	}

@@ -232,10 +232,10 @@ void klp_shadow_free_all(unsigned long id, klp_shadow_dtor_t dtor);
 struct klp_state *klp_get_state(struct klp_patch *patch, unsigned long id);
 struct klp_state *klp_get_prev_state(unsigned long id);
 
-int klp_write_relocations(Elf_Ehdr *ehdr, Elf_Shdr *sechdrs,
-			  const char *shstrtab, const char *strtab,
-			  unsigned int symindex, struct module *pmod,
-			  const char *objname);
+int klp_apply_section_relocs(struct module *pmod, Elf_Shdr *sechdrs,
+			     const char *shstrtab, const char *strtab,
+			     unsigned int symindex, unsigned int secindex,
+			     const char *objname);
 
 /* Used to annotate symbol relocations in livepatches */
 #define KLP_MODULE_RELOC(obj)						\
@@ -258,10 +258,10 @@ static inline void klp_update_patch_state(struct task_struct *task) {}
 static inline void klp_copy_process(struct task_struct *child) {}
 
 static inline
-int klp_write_relocations(Elf_Ehdr *ehdr, Elf_Shdr *sechdrs,
-			  const char *shstrtab, const char *strtab,
-			  unsigned int symindex, struct module *pmod,
-			  const char *objname)
+int klp_apply_section_relocs(struct module *pmod, Elf_Shdr *sechdrs,
+			     const char *shstrtab, const char *strtab,
+			     unsigned int symindex, unsigned int secindex,
+			     const char *objname);
 {
 	return 0;
 }

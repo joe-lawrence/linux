@@ -2322,10 +2322,11 @@ static int apply_relocations(struct module *mod, const struct load_info *info)
 			continue;
 
 		if (info->sechdrs[i].sh_flags & SHF_RELA_LIVEPATCH)
-			err = klp_write_relocations(info->hdr, info->sechdrs,
-						    info->secstrings,
-						    info->strtab,
-						    info->index.sym, mod, NULL);
+			err = klp_apply_section_relocs(mod, info->sechdrs,
+						       info->secstrings,
+						       info->strtab,
+						       info->index.sym, i,
+						       NULL);
 		else if (info->sechdrs[i].sh_type == SHT_REL)
 			err = apply_relocate(info->sechdrs, info->strtab,
 					     info->index.sym, i, mod);
