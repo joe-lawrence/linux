@@ -10,6 +10,8 @@ obj-$(CONFIG_TEST_LIVEPATCH) += test_klp_atomic_replace.o \
 				test_klp_convert1.o \
 				test_klp_convert2.o \
 				test_klp_convert_sections.o \
+				test_klp_convert_keys.o \
+				test_klp_convert_keys_mod.o \
 				test_klp_convert_mod.o \
 				test_klp_livepatch.o \
 				test_klp_shadow_vars.o \
@@ -24,4 +26,5 @@ test_klp_convert_mod-y := \
 # Target modules to be livepatched require CC_FLAGS_FTRACE
 CFLAGS_test_klp_callbacks_busy.o	+= $(CC_FLAGS_FTRACE)
 CFLAGS_test_klp_callbacks_mod.o		+= $(CC_FLAGS_FTRACE)
+CFLAGS_test_klp_convert_keys_mod.o	+= $(CC_FLAGS_FTRACE)
 CFLAGS_test_klp_convert_mod.o		+= $(CC_FLAGS_FTRACE)
