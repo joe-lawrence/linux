@@ -47,7 +47,7 @@
 Module.symvers
 modules.builtin
 modules.order
-Symbols.list
+symbols.klp
 
 #
 # Top-level generic files
