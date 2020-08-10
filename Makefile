@@ -1437,7 +1437,8 @@ endif # CONFIG_MODULES
 
 # Directories & files removed with 'make clean'
 CLEAN_FILES += include/ksym vmlinux.symvers \
-	       modules.builtin modules.builtin.modinfo modules.nsdeps
+	       modules.builtin modules.builtin.modinfo modules.nsdeps \
+	       modules.livepatch
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_FILES += include/config include/generated          \
