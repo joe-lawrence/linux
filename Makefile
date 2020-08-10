@@ -1361,18 +1361,17 @@ endif
 # using awk while concatenating to the final file.
 
 quiet_cmd_klp_map = KLP     symbols.klp
-SLIST = $(objtree)/symbols.klp
 
 define cmd_klp_map
-	$(shell echo "klp-convert-symbol-data.0.1" > $(SLIST))				\
-	$(shell echo "*vmlinux" >> $(SLIST))						\
-	$(shell nm -f posix $(objtree)/vmlinux | cut -d\  -f1 >> $(SLIST))		\
-	$(foreach ko, $(sort $(shell cat modules.order)),				\
-		$(eval mod = $(patsubst %.ko,%.mod,$(ko)))				\
-		$(eval obj = $(patsubst %.ko,%.o,$(ko)))				\
-		$(if $(shell grep -o LIVEPATCH $(mod)),,				\
-			$(shell echo "*$(shell basename -s .ko $(ko))" >> $(SLIST))	\
-			$(shell nm -f posix $(obj) | cut -d\  -f1 >> $(SLIST))))
+	$(shell echo "klp-convert-symbol-data.0.1" > $(objtree)/symbols.klp)				\
+	$(shell echo "*vmlinux" >> $(objtree)/symbols.klp)						\
+	$(shell nm -f posix $(objtree)/vmlinux | cut -d\  -f1 >> $(objtree)/symbols.klp)		\
+	$(foreach ko, $(sort $(shell cat modules.order)),						\
+		$(eval mod = $(patsubst %.ko,%.mod,$(ko)))						\
+		$(eval obj = $(patsubst %.ko,%.o,$(ko)))						\
+		$(if $(shell grep -o LIVEPATCH $(mod)),,						\
+			$(shell echo "*$(shell basename -s .ko $(ko))" >> $(objtree)/symbols.klp)	\
+			$(shell nm -f posix $(obj) | cut -d\  -f1 >> $(objtree)/symbols.klp)))
 endef
 
 PHONY += modules
@@ -1452,7 +1451,8 @@ endif # CONFIG_MODULES
 
 # Directories & files removed with 'make clean'
 CLEAN_FILES += include/ksym vmlinux.symvers \
-	       modules.builtin modules.builtin.modinfo modules.nsdeps
+	       modules.builtin modules.builtin.modinfo modules.nsdeps \
+	       symbols.klp
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_FILES += include/config include/generated          \
