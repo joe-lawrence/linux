@@ -477,6 +477,9 @@ static int read_symbols(struct elf *elf)
 		list_for_each_entry(sym, &sec->symbol_list, list) {
 			char pname[MAX_NAME_LEN + 1];
 			size_t pnamelen;
+			char *suffixstr;
+			size_t suffixlen=0;
+
 			if (sym->type != STT_FUNC)
 				continue;
 
@@ -490,8 +493,12 @@ static int read_symbols(struct elf *elf)
 			if (!coldstr)
 				continue;
 
+			suffixstr = strstr(coldstr + 1, ".");
+			if (suffixstr)
+				suffixlen = strlen(suffixstr);
+
 			pnamelen = coldstr - sym->name;
-			if (pnamelen > MAX_NAME_LEN) {
+			if (pnamelen + suffixlen > MAX_NAME_LEN) {
 				WARN("%s(): parent function name exceeds maximum length of %d characters",
 				     sym->name, MAX_NAME_LEN);
 				return -1;
@@ -499,7 +506,13 @@ static int read_symbols(struct elf *elf)
 
 			strncpy(pname, sym->name, pnamelen);
 			pname[pnamelen] = '\0';
+
 			pfunc = find_symbol_by_name(elf, pname);
+			if (!pfunc && suffixstr) {
+				/* Check also for pname without suffix */
+				strcat(pname, suffixstr);
+				pfunc = find_symbol_by_name(elf, pname);
+			}
 
 			if (!pfunc) {
 				WARN("%s(): can't find parent function",
