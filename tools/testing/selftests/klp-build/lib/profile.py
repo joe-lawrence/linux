@@ -300,6 +300,16 @@ def _effective_toolchain_from_chain(chain: List["Profile"]) -> tuple[dict, Optio
     return ({}, None, -1)
 
 
+def apply_toolchain_for_profile(profile_name: str) -> None:
+    """
+    Set os.environ (CC, LLVM=1, LD, AS) from the profile chain's effective
+    toolchain so that builds match the config produced by apply_profile.
+    """
+    chain = parse_profile_chain(profile_name)
+    tc_dict, _, _ = _effective_toolchain_from_chain(chain)
+    set_toolchain_env(tc_dict)
+
+
 def _check_toolchain_conflicts(chain: List["Profile"]) -> None:
     """Raise ValueError if any two profiles in the chain specify different toolchains."""
     toolchains = [(p.name, p.toolchain) for p in chain if p.toolchain]
