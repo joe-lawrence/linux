@@ -56,6 +56,17 @@ def _profile_type_from_name(name: str) -> str:
     return "full"  # default for legacy names
 
 
+def parse_profile_chain(profile_string: str) -> List["Profile"]:
+    """
+    Parse a PROFILE value that may be a chain (e.g. full-default+overlay-thin-lto).
+    Returns a list of Profile objects in order.
+    """
+    parts = [p.strip() for p in profile_string.split("+") if p.strip()]
+    if not parts:
+        raise ValueError("Empty profile chain")
+    return [load_profile(name) for name in parts]
+
+
 def load_profile(name: str) -> "Profile":
     """
     Load profile by name. Raises FileNotFoundError if config.yaml missing,
@@ -224,82 +235,13 @@ def _verify_config_apply_in_config(config_path: str, fragment_paths: List[str]) 
                 )
 
 
-def set_toolchain_env(toolchain: dict) -> None:
-    """Set CC, LD, AS in os.environ from profile toolchain for config and build."""
-    if not toolchain:
-        return
-    compiler = toolchain.get("compiler")
-    if compiler:
-        os.environ["CC"] = compiler
-    linker = toolchain.get("linker")
-    if linker:
-        os.environ["LD"] = linker
-    assembler = toolchain.get("assembler")
-    if assembler:
-        os.environ["AS"] = assembler
-
-
-def apply_profile(
-    kernel_root: str,
-    profile_name: str,
-    base_config_path: Optional[str] = None,
-) -> None:
+def _get_fragment_paths_for_profile(profile: "Profile", kernel_root: str) -> tuple[List[str], List[str]]:
     """
-    Apply a single profile's config to the kernel tree.
-    If base_config_path is set (e.g. saved .config), use that as the base when
-    the profile has no config_base (overlay); otherwise use kernel_root/.config.
-    All commands run from kernel_root.
-    Verification: only config_apply fragment options are verified after
-    olddefconfig; config_base is not verified.
+    Resolve config_apply for a profile to a list of fragment file paths.
+    Returns (fragment_paths, tmp_files_to_cleanup). Commands are run and stdout
+    is written to temp files.
     """
-    profile = load_profile(profile_name)
-    set_toolchain_env(profile.toolchain)
-    config_path = os.path.join(kernel_root, ".config")
-
-    if not profile.config_base and not (base_config_path and os.path.isfile(base_config_path)):
-        if not os.path.isfile(config_path):
-            raise FileNotFoundError(
-                "Profile has no config_base and no .config exists. "
-                "Create a .config first (e.g. make defconfig) or use a profile that sets config_base."
-            )
-
-    if profile.config_base:
-        for entry in profile.config_base:
-            resolved = profile._resolve_path(entry) if profile._is_path(entry) else None
-            if resolved is not None and os.path.isfile(resolved):
-                with open(resolved, "r", encoding="utf-8") as f:
-                    content = f.read()
-                with open(config_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-                break
-            else:
-                subprocess.run(
-                    entry,
-                    shell=True,
-                    cwd=kernel_root,
-                    check=True,
-                    env=os.environ.copy(),
-                )
-                break
-    else:
-        if base_config_path and os.path.isfile(base_config_path):
-            with open(base_config_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            with open(config_path, "w", encoding="utf-8") as f:
-                f.write(content)
-        # else: keep existing .config
-
     merge_list = profile._get_config_apply_list()
-    if not merge_list:
-        subprocess.run(
-            ["make", "olddefconfig"],
-            cwd=kernel_root,
-            check=True,
-            capture_output=True,
-            env=os.environ.copy(),
-        )
-        return
-
     fragment_paths = []
     tmp_files = []
     for entry in merge_list:
@@ -321,35 +263,196 @@ def apply_profile(
                 tf.write(result.stdout or "")
                 tmp_files.append(tf.name)
                 fragment_paths.append(tf.name)
+    return fragment_paths, tmp_files
+
+
+def set_toolchain_env(toolchain: dict) -> None:
+    """
+    Set CC, LD, AS (and LLVM=1 when using clang) in os.environ from profile
+    toolchain. The kernel Makefile uses LLVM=1 to enable clang/LLVM mode for
+    defconfig and olddefconfig, so Kconfig can set CONFIG_CC_IS_CLANG and
+    expose LTO options.
+    """
+    if not toolchain:
+        return
+    compiler = toolchain.get("compiler")
+    if compiler:
+        os.environ["CC"] = compiler
+        if compiler == "clang":
+            os.environ["LLVM"] = "1"
+    linker = toolchain.get("linker")
+    if linker:
+        os.environ["LD"] = linker
+    assembler = toolchain.get("assembler")
+    if assembler:
+        os.environ["AS"] = assembler
+
+
+def _effective_toolchain_from_chain(chain: List["Profile"]) -> tuple[dict, Optional["Profile"], int]:
+    """
+    Return (toolchain_dict, profile, index) for the effective toolchain.
+    Uses the last profile in the chain that has a non-empty toolchain.
+    If none have a toolchain, returns ({}, None, -1).
+    """
+    for i in range(len(chain) - 1, -1, -1):
+        if chain[i].toolchain:
+            return (chain[i].toolchain, chain[i], i)
+    return ({}, None, -1)
+
+
+def _check_toolchain_conflicts(chain: List["Profile"]) -> None:
+    """Raise ValueError if any two profiles in the chain specify different toolchains."""
+    toolchains = [(p.name, p.toolchain) for p in chain if p.toolchain]
+    for i, (name_a, tc_a) in enumerate(toolchains):
+        for name_b, tc_b in toolchains[i + 1 :]:
+            for key in set(tc_a) | set(tc_b):
+                if tc_a.get(key) != tc_b.get(key):
+                    raise ValueError(
+                        f"Conflicting toolchain in chain: '{name_a}' has {key}={tc_a.get(key)!r}, "
+                        f"'{name_b}' has {key}={tc_b.get(key)!r}"
+                    )
+
+
+def _warn_overlay_toolchain_on_existing_config(
+    chain: List["Profile"],
+    base_config_path: Optional[str],
+    config_path: str,
+) -> None:
+    """
+    If chain is overlay-only, we are using an existing .config as base, and any
+    overlay has a toolchain, print a warning (same style as implied-toolchain
+    warning) that we are changing the toolset. Do not error; allow the apply.
+    """
+    has_full = any(p.profile_type == "full" for p in chain)
+    if has_full:
+        return
+    using_existing_config = (
+        (base_config_path is not None and os.path.isfile(base_config_path))
+        or (base_config_path is None and os.path.isfile(config_path))
+    )
+    if not using_existing_config:
+        return
+    profiles_with_toolchain = [p for p in chain if p.toolchain]
+    if not profiles_with_toolchain:
+        return
+    names = ", ".join(p.name for p in profiles_with_toolchain)
+    tc = profiles_with_toolchain[-1].toolchain
+    parts = [f"{k}={v}" for k, v in sorted(tc.items()) if v]
+    msg = (
+        f"Note: overlay(s) ({names}) set the toolchain ({', '.join(parts)}) "
+        "on top of existing .config, which may have been built with a different toolchain."
+    )
+    print(msg, file=sys.stderr)
+
+
+def _warn_implied_toolchain(
+    chain: List["Profile"],
+    effective_profile: Optional["Profile"],
+    effective_index: int,
+) -> None:
+    """Print a warning when the effective toolchain comes from a profile that is not the first."""
+    if effective_profile is None or effective_index <= 0:
+        return
+    tc = effective_profile.toolchain
+    parts = [f"{k}={v}" for k, v in sorted(tc.items()) if v]
+    msg = (
+        f"Note: {effective_profile.name} sets the toolchain for this chain "
+        f"({', '.join(parts)}). Base config and all following steps will use this toolchain."
+    )
+    print(msg, file=sys.stderr)
+
+
+def apply_profile_chain(
+    kernel_root: str,
+    chain: List["Profile"],
+    base_config_path: Optional[str] = None,
+) -> None:
+    """
+    Apply a chain of profiles in order. Effective toolchain is the last profile
+    in the chain that has one; it is set before any config step. Runs conflict
+    and overlay-only checks, then applies each profile (config_base then
+    config_apply), runs olddefconfig once at the end, and verifies config_apply
+    for every profile in the final .config.
+    """
+    config_path = os.path.join(kernel_root, ".config")
+
+    if len(chain) == 0:
+        raise ValueError("Empty profile chain")
+
+    full_count = sum(1 for p in chain if p.profile_type == "full")
+    if full_count > 1:
+        raise ValueError(
+            "Chain must not contain more than one full profile; "
+            f"got {full_count} (e.g. full-default+full-virtme-ng is invalid)"
+        )
+
+    _check_toolchain_conflicts(chain)
+    _warn_overlay_toolchain_on_existing_config(chain, base_config_path, config_path)
+
+    has_full = any(p.profile_type == "full" for p in chain)
+    if not has_full and not (base_config_path and os.path.isfile(base_config_path)):
+        if not os.path.isfile(config_path):
+            raise FileNotFoundError(
+                "Overlay-only chain and no .config exists. "
+                "Create a .config first (e.g. make defconfig) or use a full profile in the chain."
+            )
+
+    tc_dict, tc_profile, tc_index = _effective_toolchain_from_chain(chain)
+    set_toolchain_env(tc_dict)
+    _warn_implied_toolchain(chain, tc_profile, tc_index)
+
+    merge_script = os.path.join(kernel_root, "scripts", "kconfig", "merge_config.sh")
+    if not os.path.isfile(merge_script):
+        raise FileNotFoundError(f"merge_config.sh not found at {merge_script}")
+
+    all_tmp_files: List[str] = []
+    per_profile_fragment_paths: List[tuple["Profile", List[str]]] = []
 
     try:
-        if not fragment_paths:
-            subprocess.run(
-                ["make", "olddefconfig"],
-                cwd=kernel_root,
-                check=True,
-                capture_output=True,
-                env=os.environ.copy(),
-            )
-            return
+        for i, profile in enumerate(chain):
+            if profile.config_base:
+                for entry in profile.config_base:
+                    resolved = profile._resolve_path(entry) if profile._is_path(entry) else None
+                    if resolved is not None and os.path.isfile(resolved):
+                        with open(resolved, "r", encoding="utf-8") as f:
+                            content = f.read()
+                        with open(config_path, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        break
+                    else:
+                        subprocess.run(
+                            entry,
+                            shell=True,
+                            cwd=kernel_root,
+                            check=True,
+                            env=os.environ.copy(),
+                        )
+                        break
+            elif i == 0 and base_config_path and os.path.isfile(base_config_path):
+                with open(base_config_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                with open(config_path, "w", encoding="utf-8") as f:
+                    f.write(content)
 
-        merge_script = os.path.join(
-            kernel_root, "scripts", "kconfig", "merge_config.sh"
-        )
-        if not os.path.isfile(merge_script):
-            raise FileNotFoundError(f"merge_config.sh not found at {merge_script}")
+            fragment_paths, tmp_files = _get_fragment_paths_for_profile(profile, kernel_root)
+            all_tmp_files.extend(tmp_files)
+            if fragment_paths:
+                per_profile_fragment_paths.append((profile, fragment_paths))
+                cmd = [merge_script, "-m", config_path] + fragment_paths
+                result = subprocess.run(
+                    cmd,
+                    cwd=kernel_root,
+                    capture_output=True,
+                    text=True,
+                    env=os.environ.copy(),
+                )
+                if result.returncode != 0:
+                    if result.stdout:
+                        print(result.stdout, file=sys.stderr)
+                    if result.stderr:
+                        print(result.stderr, file=sys.stderr)
+                    result.check_returncode()
 
-        cmd = [merge_script, "-m", config_path] + fragment_paths
-        result = subprocess.run(
-            cmd, cwd=kernel_root, capture_output=True, text=True,
-            env=os.environ.copy(),
-        )
-        if result.returncode != 0:
-            if result.stdout:
-                print(result.stdout, file=sys.stderr)
-            if result.stderr:
-                print(result.stderr, file=sys.stderr)
-            result.check_returncode()
         subprocess.run(
             ["make", "olddefconfig"],
             cwd=kernel_root,
@@ -357,10 +460,29 @@ def apply_profile(
             capture_output=True,
             env=os.environ.copy(),
         )
-        _verify_config_apply_in_config(config_path, fragment_paths)
+
+        for _profile, paths in per_profile_fragment_paths:
+            _verify_config_apply_in_config(config_path, paths)
     finally:
-        for p in tmp_files:
+        for p in all_tmp_files:
             try:
                 os.unlink(p)
             except OSError:
                 pass
+
+
+def apply_profile(
+    kernel_root: str,
+    profile_name: str,
+    base_config_path: Optional[str] = None,
+) -> None:
+    """
+    Apply a profile or profile chain to the kernel tree.
+    profile_name can be a single profile (e.g. full-default) or a chain
+    (e.g. full-default+overlay-thin-lto). If base_config_path is set, it is
+    used as the base when the first profile is an overlay.
+    Verification: only config_apply fragment options are verified after
+    olddefconfig; config_base is not verified.
+    """
+    chain = parse_profile_chain(profile_name)
+    apply_profile_chain(kernel_root, chain, base_config_path)
