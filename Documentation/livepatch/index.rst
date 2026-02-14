@@ -8,6 +8,7 @@ Kernel Livepatching
     :maxdepth: 1
 
     livepatch
+    klp-build-testing
     callbacks
     cumulative-patches
     module-elf-format
