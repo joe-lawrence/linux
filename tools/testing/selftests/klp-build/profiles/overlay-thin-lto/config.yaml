@@ -1,0 +1,14 @@
+# Overlay: thin LTO config + clang/LLVM toolchain.
+name: overlay-thin-lto
+description: Clang Thin-LTO overlay
+
+config_apply:
+  - ../0000-klp-build.fragment
+  - 0001-thin-lto.fragment
+
+toolchain:
+  compiler: clang
+  linker: ld.lld
+  assembler: clang
+
+runtime: true
