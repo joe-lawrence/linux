@@ -1,0 +1,22 @@
+From: klp-build-test <test@example.com>
+Subject: [PATCH] proc/cmdline: add debug message
+
+Simple single-function livepatch test case.
+
+Signed-off-by: klp-build-test <test@example.com>
+---
+ fs/proc/cmdline.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/fs/proc/cmdline.c b/fs/proc/cmdline.c
+index 91fe1597af7d..84c1f2466611 100644
+--- a/fs/proc/cmdline.c
++++ b/fs/proc/cmdline.c
+@@ -8,6 +8,7 @@
+ 
+ static int cmdline_proc_show(struct seq_file *m, void *v)
+ {
++	pr_info("klp-build-test: cmdline_proc_show called\n");
+ 	seq_puts(m, saved_command_line);
+ 	seq_putc(m, '\n');
+ 	return 0;

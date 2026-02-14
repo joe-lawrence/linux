@@ -1,0 +1,21 @@
+From: Test Author <test@example.com>
+Subject: [PATCH] proc/version: add debug message
+
+Bad context test case.
+
+This patch has intentionally incorrect context lines to verify
+klp-build rejects patches that don't apply cleanly.
+
+diff --git a/fs/proc/version.c b/fs/proc/version.c
+--- a/fs/proc/version.c
++++ b/fs/proc/version.c
+@@ -10,7 +10,8 @@
+ 
+ static int version_proc_show(struct seq_file *m, void *v)
+ {
+-	THIS LINE DOES NOT MATCH THE REAL FILE
++	pr_info("klp-build-test: should fail\n");
++	THIS LINE ALSO DOES NOT MATCH
+ 	seq_printf(m, linux_proc_banner,
+ 		utsname()->sysname,
+ 		utsname()->release,

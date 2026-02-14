@@ -1,0 +1,19 @@
+From: Test Author <test@example.com>
+Subject: [PATCH 1/2] proc/cmdline: add debug message
+
+Multi-patch test case - first patch.
+
+This is the first of two patches that will be applied together
+to verify klp-build handles multiple patch inputs.
+
+diff --git a/fs/proc/cmdline.c b/fs/proc/cmdline.c
+--- a/fs/proc/cmdline.c
++++ b/fs/proc/cmdline.c
+@@ -8,6 +8,7 @@
+ 
+ static int cmdline_proc_show(struct seq_file *m, void *v)
+ {
++	pr_info("klp-build-test: cmdline patch 1\n");
+ 	seq_puts(m, saved_command_line);
+ 	seq_putc(m, '\n');
+ 	return 0;

@@ -1,0 +1,34 @@
+From: Test Author <test@example.com>
+Subject: [PATCH] proc/stat: add stat tracking helper
+
+New local symbol livepatch test case.
+
+This patch adds a new static helper function and calls it from
+an existing function to verify klp-build includes new local symbols
+in the livepatch.
+
+diff --git a/fs/proc/stat.c b/fs/proc/stat.c
+--- a/fs/proc/stat.c
++++ b/fs/proc/stat.c
+@@ -54,6 +54,13 @@ static u64 get_iowait_time(struct kernel_cpustat *kcs, int cpu)
+ 	return iowait;
+ }
+ 
++static void klp_test_stat_accessed(void)
++{
++	static atomic_t call_count = ATOMIC_INIT(0);
++	atomic_inc(&call_count);
++	pr_info("klp-build-test: stat accessed %d times\n", atomic_read(&call_count));
++}
++
+ static int show_stat(struct seq_file *p, void *v)
+ {
+ 	int i, j;
+@@ -92,6 +99,7 @@ static int show_stat(struct seq_file *p, void *v)
+ 	user = nice = system = idle = iowait =
+ 		irq = softirq = steal = 0;
+ 	guest = guest_nice = 0;
++	klp_test_stat_accessed();
+ 	getboottime64(&boottime);
+ 	/* shift boot timestamp according to the timens offset */
+ 	timens_sub_boottime(&boottime);

@@ -1,0 +1,27 @@
+diff -Nupr orig/fs/proc/klp_test_1970.txt patched/fs/proc/klp_test_1970.txt
+--- orig/fs/proc/klp_test_1970.txt	2026-02-06 12:00:00.000000000 +0000
++++ patched/fs/proc/klp_test_1970.txt	1970-01-01 00:00:00.000000000 +0000
+@@ -1,4 +0,0 @@
+-SPDX-License-Identifier: GPL-2.0
+-
+-klp-build test file 1970
+-This file tests diff -Nupr format with 1970 epoch timestamp.
+diff -Nupr orig/fs/proc/klp_test_1969.txt patched/fs/proc/klp_test_1969.txt
+--- orig/fs/proc/klp_test_1969.txt	2026-02-06 12:00:00.000000000 -0500
++++ patched/fs/proc/klp_test_1969.txt	1969-12-31 19:00:00.000000000 -0500
+@@ -1,4 +0,0 @@
+-SPDX-License-Identifier: GPL-2.0
+-
+-klp-build test file 1969
+-This file tests diff -Nupr format with 1969 epoch timestamp.
+diff -Nupr orig/fs/proc/cmdline.c patched/fs/proc/cmdline.c
+--- orig/fs/proc/cmdline.c	2026-02-06 12:00:00.000000000 +0000
++++ patched/fs/proc/cmdline.c	2026-02-06 12:00:01.000000000 +0000
+@@ -8,6 +8,7 @@
+ 
+ static int cmdline_proc_show(struct seq_file *m, void *v)
+ {
++	pr_info("klp-build-test: remove-file-diff test\n");
+ 	seq_puts(m, saved_command_line);
+ 	seq_putc(m, '\n');
+ 	return 0;
