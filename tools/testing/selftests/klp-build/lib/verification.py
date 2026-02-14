@@ -3,10 +3,16 @@
 
 import importlib.util
 import os
+import re
+import subprocess
 import sys
 
 # Test expects build to succeed (pass) or fail (fail).
 EXPECT_SUCCESS = "expect_success"
+
+
+class VerificationError(Exception):
+    """Raised when verify() finds an unexpected result."""
 
 
 def load_expected(test_dir: str):
@@ -29,3 +35,81 @@ def get_expect_success(test_dir: str) -> bool:
     if mod is None:
         return True
     return getattr(mod, EXPECT_SUCCESS, getattr(mod, "EXPECT_SUCCESS", True))
+
+
+def verify_ko_exists(ko_path) -> None:
+    """Verify that the .ko file was created. Raises VerificationError if not."""
+    path = str(ko_path)
+    if not path or not os.path.isfile(path):
+        raise VerificationError(f"Expected .ko file not found: {ko_path}")
+
+
+def verify_elf_section(ko_path, section_name: str) -> None:
+    """Verify that an ELF section exists in the .ko file."""
+    path = str(ko_path) if not isinstance(ko_path, str) else ko_path
+    if not os.path.isfile(path):
+        raise VerificationError(f"ELF file not found: {path}")
+    try:
+        from elftools.elf.elffile import ELFFile
+        with open(path, "rb") as f:
+            elf = ELFFile(f)
+            sections = [s.name for s in elf.iter_sections()]
+    except ImportError:
+        result = subprocess.run(
+            ["readelf", "-S", "-W", path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            raise VerificationError(f"readelf failed: {path}")
+        sections = []
+        for line in result.stdout.splitlines():
+            m = re.match(r"\s*\[\s*\d+\]\s+(\S+)", line)
+            if m:
+                name = m.group(1)
+                if name and name != "NULL":
+                    sections.append(name)
+    except Exception as e:
+        raise VerificationError(f"Failed to parse ELF {path}: {e}")
+    if section_name not in sections:
+        raise VerificationError(
+            f"Section '{section_name}' not found in {os.path.basename(path)}; "
+            f"available: {', '.join(sections[:20])}{'...' if len(sections) > 20 else ''}"
+        )
+
+
+def verify_diff_log_contains(tmp_dir, pattern: str) -> None:
+    """Verify that klp-tmp/diff/diff.log contains the given pattern."""
+    base = str(tmp_dir)
+    diff_log = os.path.join(base, "diff", "diff.log")
+    if not os.path.isfile(diff_log):
+        raise VerificationError(f"diff.log not found: {diff_log}")
+    with open(diff_log, "r", encoding="utf-8", errors="replace") as f:
+        content = f.read()
+    if pattern not in content:
+        raise VerificationError(
+            f"Pattern {pattern!r} not found in diff.log\nContent (first 500 chars):\n{content[:500]}..."
+        )
+
+
+def verify_exit_code_nonzero(returncode: int) -> None:
+    """Raise VerificationError if returncode is 0."""
+    if returncode == 0:
+        raise VerificationError("Expected non-zero exit code")
+
+
+def verify_stderr_matches(stderr: str, pattern: str) -> None:
+    """Raise VerificationError if stderr does not match the regex pattern."""
+    if not stderr or not re.search(pattern, stderr, re.IGNORECASE):
+        raise VerificationError(f"Expected stderr to match {pattern!r}")
+
+
+def run_verify(test_dir: str, **kwargs) -> None:
+    """Run expected.verify(**kwargs) if present. Raises on failure."""
+    mod = load_expected(test_dir)
+    if mod is None:
+        return
+    verify = getattr(mod, "verify", None)
+    if verify is not None and callable(verify):
+        verify(**kwargs)
