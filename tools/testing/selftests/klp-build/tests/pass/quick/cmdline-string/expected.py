@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0
-"""Simple single-function livepatch."""
+"""Single-function livepatch on fs/proc/cmdline.c."""
 
 from verification import (
     verify_ko_exists,
