@@ -291,17 +291,26 @@ set_module_name() {
 
 # Hardcode the value printed by the localversion script to prevent patch
 # application from appending it with '+' due to a dirty working tree.
+# When short-circuiting at step 2 or later, restore the saved override from
+# a prior run instead of recomputing (avoids version mismatch with orig objects).
 set_kernelversion() {
 	local file="$SRC/scripts/setlocalversion"
 	local localversion
 
 	stash_file "$file"
+	if (( SHORT_CIRCUIT >= 2 )); then
+		[[ ! -f "$TMP_DIR/setlocalversion.override" ]] && \
+			die "previous setlocalversion.override not found"
+		cp -f "$TMP_DIR/setlocalversion.override" "$SRC/scripts/setlocalversion"
+		return 0
+	fi
 
 	localversion="$(cd "$SRC" && make --no-print-directory kernelversion)"
 	localversion="$(cd "$SRC" && KERNELVERSION="$localversion" ./scripts/setlocalversion)"
 	[[ -z "$localversion" ]] && die "setlocalversion failed"
 
 	sed -i "2i echo $localversion; exit 0" scripts/setlocalversion
+	cp -f "$SRC/scripts/setlocalversion" "$TMP_DIR/setlocalversion.override"
 }
 
 get_patch_input_files() {
