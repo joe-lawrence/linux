@@ -32,7 +32,7 @@ help:
 	@printf "  %-32s - %s\n" "build_tests" "Run full build test suite (no PROFILE: current .config; PROFILE=...: stash, run each, restore)"
 	@printf "  %-32s - %s\n" "build_tests_quick" "Run quick tests only (pass/quick + fail/quick)"
 	@printf "  %-32s - %s\n" "build_tests PROFILE=a b" "Run build_tests for each profile (e.g. full-default full-default+overlay-thin-lto)"
-	@printf "  %-32s - %s\n" "clean" "Remove __pycache__ directories under selftest"
+	@printf "  %-32s - %s\n" "clean" "Remove __pycache__, *-generated.patch, and artifacts under selftest"
 
 # Stash path for .config when running build_tests with PROFILE=...
 CONFIG_STASH := $(KERNEL_SRC)/.config.klp-build-stash
@@ -69,5 +69,7 @@ build_tests_quick:
 
 clean:
 	@find "$(SELFTEST_DIR)" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; true
+	@find "$(SELFTEST_DIR)/tests" -type f -name '*-generated.patch' -delete 2>/dev/null; true
+	@rm -rf "$(SELFTEST_DIR)/artifacts"
 
 .PHONY: tests_config build_tests build_tests_quick clean help

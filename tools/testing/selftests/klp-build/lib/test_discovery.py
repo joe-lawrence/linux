@@ -33,15 +33,15 @@ def discover_tests(selftest_root: str) -> list:
                     continue
                 pattern = os.path.join(test_dir, "*.patch")
                 patch_files = sorted(glob.glob(pattern))
-                if not patch_files:
-                    has_expected = os.path.isfile(os.path.join(test_dir, "expected.py"))
-                    if has_expected:
-                        mod = load_expected(test_dir)
-                        if getattr(mod, "generate_patches", None):
-                            patch_files = []
-                        else:
-                            continue
-                    else:
+                has_expected = os.path.isfile(os.path.join(test_dir, "expected.py"))
+                if has_expected:
+                    mod = load_expected(test_dir)
+                    if getattr(mod, "generate_patches", None):
+                        patch_files = []  # always (re)generate; caller resolves
+                    elif not patch_files:
+                        continue
+                else:
+                    if not patch_files:
                         continue
                 test_id = f"{outcome}/{speed}/{name}"
                 expect_ok = get_expect_success(test_dir)
