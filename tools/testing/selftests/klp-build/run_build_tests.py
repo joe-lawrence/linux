@@ -8,10 +8,12 @@ Use --profile to set toolchain from a profile; use --quick for quick tests only.
 """
 
 import argparse
+import filecmp
 import os
 import shutil
 import sys
 import time
+from typing import Optional
 
 # Allow importing from lib when script is run from repo root or selftest dir.
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +25,8 @@ from test_discovery import discover_tests, get_expected_attrs
 from requirements import test_belongs_to_profile, config_has_symbol
 from klp_build import run_klp_build
 from verification import load_expected, run_verify, VerificationError
+from build_log import write_build_log
+from state import ARTIFACTS_DIR
 
 
 # Subdirs of klp-tmp that are rewritten by steps 2-4; clear before -S 2 to avoid residual logs.
@@ -51,6 +55,42 @@ def set_toolchain_env_from_config(config_path: str) -> None:
         os.environ["CC"] = "clang"
 
 
+def _resolve_profile(
+    artifacts_root: str,
+    config_path: str,
+    explicit_profile: Optional[str],
+) -> str:
+    """Return profile name: --profile if set, else match .config to artifacts/*/config, else 'current-profile'."""
+    if explicit_profile:
+        return explicit_profile
+    if not os.path.isfile(config_path):
+        return "current-profile"
+    if not os.path.isdir(artifacts_root):
+        return "current-profile"
+    for name in sorted(os.listdir(artifacts_root)):
+        dir_path = os.path.join(artifacts_root, name)
+        if not os.path.isdir(dir_path):
+            continue
+        artifact_config = os.path.join(dir_path, "config")
+        if os.path.isfile(artifact_config) and filecmp.cmp(config_path, artifact_config, shallow=False):
+            return name
+    return "current-profile"
+
+
+def _ensure_profile_artifact_dir(artifacts_root: str, profile_name: str, config_path: str) -> None:
+    """Ensure artifacts/<profile>/ exists with config and profile file."""
+    profile_dir = os.path.join(artifacts_root, profile_name)
+    os.makedirs(profile_dir, exist_ok=True)
+    profile_file = os.path.join(profile_dir, "profile")
+    if not os.path.isfile(profile_file):
+        with open(profile_file, "w", encoding="utf-8") as f:
+            f.write(profile_name + "\n")
+    if os.path.isfile(config_path):
+        dest_config = os.path.join(profile_dir, "config")
+        if not os.path.isfile(dest_config) or not filecmp.cmp(config_path, dest_config, shallow=False):
+            shutil.copy2(config_path, dest_config)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run klp-build tests for current .config")
     parser.add_argument(
@@ -63,21 +103,28 @@ def main():
         action="store_true",
         help="Run only quick tests (pass/quick and fail/quick)",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include klp-tmp logs (diff.log, orig/patched/kmod build.log) in build-test.log",
+    )
     args = parser.parse_args()
 
     selftest_root = _SCRIPT_DIR
     kernel_root = os.path.abspath(os.path.join(selftest_root, "..", "..", "..", ".."))
     config_path = os.path.join(kernel_root, ".config")
+    artifacts_root = os.path.join(selftest_root, ARTIFACTS_DIR)
+
+    profile_name = _resolve_profile(artifacts_root, config_path, args.profile)
+    _ensure_profile_artifact_dir(artifacts_root, profile_name, config_path)
 
     if args.profile:
         from profile import apply_toolchain_for_profile
         apply_toolchain_for_profile(args.profile)
-        profile_name = args.profile
         profile_compiler = None  # use current env (we just set it)
     else:
         # Match build toolchain to .config so make does not prompt (e.g. LLVM=1).
         set_toolchain_env_from_config(config_path)
-        profile_name = "current-profile"
         profile_compiler = None
 
     tests = discover_tests(selftest_root)
@@ -127,6 +174,8 @@ def main():
                 continue
 
         print(f"# Starting build: {desc_prefix}{test_id}", flush=True)
+        test_name = test_id.split("/")[-1]
+        artifact_dir = os.path.join(artifacts_root, profile_name, test_name)
         try:
             t0 = time.monotonic()
             if first_build:
@@ -137,6 +186,19 @@ def main():
                 out = run_klp_build(kernel_root, patch_paths, keep_tmp=True, short_circuit=2)
             elapsed = time.monotonic() - t0
             run_comment = f" # klp-build exit {out.returncode} in {elapsed:.1f}s"
+
+            write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose)
+
+            dest_ko = None
+            if out.ko_path and os.path.isfile(out.ko_path):
+                os.makedirs(artifact_dir, exist_ok=True)
+                dest_ko = os.path.join(artifact_dir, os.path.basename(out.ko_path))
+                shutil.copy2(out.ko_path, dest_ko)
+                try:
+                    os.unlink(out.ko_path)
+                except OSError:
+                    pass
+
             if expect_success:
                 if out.returncode != 0:
                     print(f"not ok {test_num} - {desc_prefix}{test_id} (exit {out.returncode}){run_comment}", flush=True)
@@ -147,7 +209,7 @@ def main():
                     test_dir,
                     returncode=out.returncode,
                     tmp_dir=out.tmp_dir,
-                    ko_path=out.ko_path,
+                    ko_path=dest_ko or out.ko_path,
                     stdout=out.stdout,
                     stderr=out.stderr,
                 )
@@ -160,7 +222,7 @@ def main():
                     test_dir,
                     returncode=out.returncode,
                     tmp_dir=out.tmp_dir,
-                    ko_path=out.ko_path,
+                    ko_path=dest_ko or out.ko_path,
                     stdout=out.stdout,
                     stderr=out.stderr,
                 )
