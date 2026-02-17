@@ -4,8 +4,8 @@
 import glob
 import os
 
-from verification import load_expected, get_expect_success
-from requirements import (
+from .verification import load_expected, get_expect_success
+from .requirements import (
     CONFIG_PROFILES,
     REQUIRED_CONFIG,
     SUPPORTED_COMPILERS,

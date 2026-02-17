@@ -31,9 +31,9 @@ def main() -> int:
         return 1
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.join(script_dir, "lib"))
-    from profile import apply_profile
-    from state import ARTIFACTS_DIR
+    sys.path.insert(0, script_dir)
+    from lib.profile import apply_profile
+    from lib.state import ARTIFACTS_DIR
 
     try:
         apply_profile(kernel_root, profile_name)

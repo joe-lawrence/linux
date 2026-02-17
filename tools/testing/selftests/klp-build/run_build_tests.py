@@ -17,16 +17,15 @@ from typing import Optional
 
 # Allow importing from lib when script is run from repo root or selftest dir.
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_LIB = os.path.join(_SCRIPT_DIR, "lib")
-if _LIB not in sys.path:
-    sys.path.insert(0, _LIB)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
 
-from test_discovery import discover_tests, get_expected_attrs
-from requirements import test_belongs_to_profile, config_has_symbol
-from klp_build import run_klp_build
-from verification import load_expected, run_verify, VerificationError
-from build_log import write_build_log
-from state import ARTIFACTS_DIR
+from lib.test_discovery import discover_tests, get_expected_attrs
+from lib.requirements import test_belongs_to_profile, config_has_symbol
+from lib.klp_build import run_klp_build
+from lib.verification import load_expected, run_verify, VerificationError
+from lib.build_log import write_build_log
+from lib.state import ARTIFACTS_DIR
 
 
 # Subdirs of klp-tmp that are rewritten by steps 2-4; clear before -S 2 to avoid residual logs.
@@ -124,7 +123,7 @@ def main():
     _ensure_profile_artifact_dir(artifacts_root, profile_name, config_path)
 
     if args.profile:
-        from profile import apply_toolchain_for_profile
+        from lib.profile import apply_toolchain_for_profile
         apply_toolchain_for_profile(args.profile)
         profile_compiler = None  # use current env (we just set it)
     else:

@@ -14,6 +14,10 @@ from enum import Enum
 
 from . import get_test_dir
 
+# Constants for build tests compatibility
+ARTIFACTS_DIR = "artifacts"
+STATE_FILENAME = ".test_state.json"
+
 
 class TestStatus(Enum):
     """Test execution status."""

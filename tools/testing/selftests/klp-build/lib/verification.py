@@ -20,13 +20,22 @@ def load_expected(test_dir: str):
     path = os.path.join(test_dir, "expected.py")
     if not os.path.isfile(path):
         return None
-    spec = importlib.util.spec_from_file_location("expected", path)
-    if spec is None or spec.loader is None:
-        return None
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["expected"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+    # expected.py files use "from verification import ..."; ensure lib/ is on path
+    _lib_dir = os.path.dirname(os.path.abspath(__file__))
+    path_inserted = _lib_dir not in sys.path
+    if path_inserted:
+        sys.path.insert(0, _lib_dir)
+    try:
+        spec = importlib.util.spec_from_file_location("expected", path)
+        if spec is None or spec.loader is None:
+            return None
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["expected"] = mod
+        spec.loader.exec_module(mod)
+        return mod
+    finally:
+        if path_inserted and sys.path and sys.path[0] == _lib_dir:
+            sys.path.pop(0)
 
 
 def get_expect_success(test_dir: str) -> bool:
