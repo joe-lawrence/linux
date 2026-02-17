@@ -8,6 +8,7 @@
 #
 
 import os
+import shutil
 import sys
 
 
@@ -29,8 +30,10 @@ def main() -> int:
         print(f"Not a directory: {kernel_root}", file=sys.stderr)
         return 1
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(script_dir, "lib"))
     from profile import apply_profile
+    from state import ARTIFACTS_DIR
 
     try:
         apply_profile(kernel_root, profile_name)
@@ -43,6 +46,16 @@ def main() -> int:
     except Exception as e:
         print(f"apply_profile failed: {e}", file=sys.stderr)
         return 1
+
+    config_path = os.path.join(kernel_root, ".config")
+    if os.path.isfile(config_path):
+        artifacts_root = os.path.join(script_dir, ARTIFACTS_DIR)
+        profile_artifact_dir = os.path.join(artifacts_root, profile_name)
+        os.makedirs(profile_artifact_dir, exist_ok=True)
+        shutil.copy2(config_path, os.path.join(profile_artifact_dir, "config"))
+        with open(os.path.join(profile_artifact_dir, "profile"), "w", encoding="utf-8") as f:
+            f.write(profile_name + "\n")
+
     return 0
 
 
