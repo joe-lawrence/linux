@@ -108,6 +108,11 @@ def main():
         action="store_true",
         help="Include klp-tmp logs (diff.log, orig/patched/kmod build.log) in build-test.log",
     )
+    parser.add_argument(
+        "--test",
+        metavar="NAME",
+        help="Run only the test with this exact name (e.g. thin-lto-type-show)",
+    )
     args = parser.parse_args()
 
     selftest_root = _SCRIPT_DIR
@@ -130,6 +135,9 @@ def main():
     tests = discover_tests(selftest_root)
     if args.quick:
         tests = [(tid, tdir, patches, exp) for tid, tdir, patches, exp in tests if tid.split("/")[1] == "quick"]
+    if args.test:
+        name = args.test
+        tests = [(tid, tdir, patches, exp) for tid, tdir, patches, exp in tests if tid.split("/")[-1] == name]
     if not tests:
         print("TAP version 13", flush=True)
         print("1..0 # no tests found", flush=True)
@@ -176,6 +184,7 @@ def main():
         print(f"# Starting build: {desc_prefix}{test_id}", flush=True)
         test_name = test_id.split("/")[-1]
         artifact_dir = os.path.join(artifacts_root, profile_name, test_name)
+        verification_results = []
         try:
             t0 = time.monotonic()
             if first_build:
@@ -186,8 +195,6 @@ def main():
                 out = run_klp_build(kernel_root, patch_paths, keep_tmp=True, short_circuit=2)
             elapsed = time.monotonic() - t0
             run_comment = f" # klp-build exit {out.returncode} in {elapsed:.1f}s"
-
-            write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose)
 
             dest_ko = None
             if out.ko_path and os.path.isfile(out.ko_path):
@@ -201,6 +208,7 @@ def main():
 
             if expect_success:
                 if out.returncode != 0:
+                    write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
                     print(f"not ok {test_num} - {desc_prefix}{test_id} (exit {out.returncode}){run_comment}", flush=True)
                     test_num += 1
                     failed += 1
@@ -212,12 +220,15 @@ def main():
                     ko_path=dest_ko or out.ko_path,
                     stdout=out.stdout,
                     stderr=out.stderr,
+                    results=verification_results,
                 )
+                write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
                 print(f"ok {test_num} - {desc_prefix}{test_id}{run_comment}", flush=True)
                 test_num += 1
                 passed += 1
             else:
-                # Fail test: expect non-zero exit; optional expected.verify()
+                # Fail test: expect non-zero exit; write log before verify so it exists even when verify raises
+                write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
                 run_verify(
                     test_dir,
                     returncode=out.returncode,
@@ -225,7 +236,9 @@ def main():
                     ko_path=dest_ko or out.ko_path,
                     stdout=out.stdout,
                     stderr=out.stderr,
+                    results=verification_results,
                 )
+                write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
                 if out.returncode == 0:
                     print(f"not ok {test_num} - {desc_prefix}{test_id} (expected non-zero exit){run_comment}", flush=True)
                     test_num += 1
@@ -235,10 +248,17 @@ def main():
                     test_num += 1
                     passed += 1
         except VerificationError as e:
+            write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
             print(f"not ok {test_num} - {desc_prefix}{test_id} ({e})", flush=True)
             test_num += 1
             failed += 1
         except Exception as e:
+            try:
+                loc = locals()
+                if "out" in loc and "artifact_dir" in loc and "test_id" in loc:
+                    write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=loc.get("verification_results"))
+            except Exception:
+                pass
             print(f"not ok {test_num} - {desc_prefix}{test_id} ({e})", flush=True)
             test_num += 1
             failed += 1

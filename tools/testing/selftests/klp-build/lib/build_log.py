@@ -106,23 +106,19 @@ def _get_toolchain_info(kernel_root: str) -> dict:
 def append_klp_tmp_logs(log_file, tmp_dir: str, verbose: bool = False) -> None:
     """
     Append klp-tmp build logs to the open log file.
-    - diff/diff.log: always
-    - orig/build.log, patched/build.log, kmod/build.log: when verbose
+    Verbose logs first (if requested), then diff.log.
     """
-    entries = [
-        ("diff/diff.log", "DIFF LOG (Object Changes)"),
-    ]
+    entries = []
     if verbose:
         entries.extend([
-            ("orig/build.log", "ORIGINAL KERNEL BUILD LOG"),
-            ("patched/build.log", "PATCHED KERNEL BUILD LOG"),
-            ("kmod/build.log", "LIVEPATCH MODULE BUILD LOG"),
+            ("orig/build.log", "orig/build.log"),
+            ("patched/build.log", "patched/build.log"),
+            ("kmod/build.log", "kmod/build.log"),
         ])
-    for rel_path, title in entries:
+    entries.append(("diff/diff.log", "diff.log"))
+    for rel_path, label in entries:
         full_path = os.path.join(tmp_dir, rel_path)
-        log_file.write(f"\n{'='*70}\n")
-        log_file.write(f"{title}\n")
-        log_file.write(f"{'='*70}\n")
+        log_file.write(f"\n--- {label} ---\n")
         if os.path.isfile(full_path):
             try:
                 with open(full_path, "r", encoding="utf-8", errors="replace") as f:
@@ -141,10 +137,12 @@ def write_build_log(
     kernel_root: str,
     patch_paths: list,
     verbose: bool = False,
+    verification_results: list = None,
 ) -> None:
     """
     Write build-test.log after klp-build completes.
     proc: KlpBuildResult from run_klp_build (returncode, stdout, stderr, ...).
+    verification_results: optional list of (check_name, passed) from verify().
     """
     log_path = os.path.join(artifact_dir, "build-test.log")
     os.makedirs(artifact_dir, exist_ok=True)
@@ -173,7 +171,14 @@ def write_build_log(
         log.write("\n--- klp-build stderr ---\n")
         log.write(proc.stderr if proc.stderr else "(empty)\n")
         append_klp_tmp_logs(log, tmp_dir, verbose)
-        log.write(f"\n{'='*70}\n")
+        if verification_results is not None:
+            log.write(f"\n{'='*70}\n")
+            log.write("BUILD VERIFICATION\n")
+            log.write(f"{'='*70}\n\n")
+            for desc, passed in verification_results:
+                log.write(f"  {desc}: {'OK' if passed else 'FAIL'}\n")
+            log.write("\n")
+        log.write(f"{'='*70}\n")
         log.write("TEST PATCH(ES)\n")
         log.write(f"{'='*70}\n\n")
         for i, path in enumerate(patch_paths, 1):

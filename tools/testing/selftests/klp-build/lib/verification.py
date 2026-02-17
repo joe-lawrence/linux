@@ -37,17 +37,24 @@ def get_expect_success(test_dir: str) -> bool:
     return getattr(mod, EXPECT_SUCCESS, getattr(mod, "EXPECT_SUCCESS", True))
 
 
-def verify_ko_exists(ko_path) -> None:
+def verify_ko_exists(ko_path, *, results=None) -> None:
     """Verify that the .ko file was created. Raises VerificationError if not."""
     path = str(ko_path)
     if not path or not os.path.isfile(path):
+        if results is not None:
+            results.append(("verify_ko_exists", False))
         raise VerificationError(f"Expected .ko file not found: {ko_path}")
+    if results is not None:
+        results.append(("verify_ko_exists", True))
 
 
-def verify_elf_section(ko_path, section_name: str) -> None:
+def verify_elf_section(ko_path, section_name: str, *, results=None) -> None:
     """Verify that an ELF section exists in the .ko file."""
     path = str(ko_path) if not isinstance(ko_path, str) else ko_path
+    desc = f"verify_elf_section({section_name})"
     if not os.path.isfile(path):
+        if results is not None:
+            results.append((desc, False))
         raise VerificationError(f"ELF file not found: {path}")
     try:
         from elftools.elf.elffile import ELFFile
@@ -62,6 +69,8 @@ def verify_elf_section(ko_path, section_name: str) -> None:
             timeout=10,
         )
         if result.returncode != 0:
+            if results is not None:
+                results.append((desc, False))
             raise VerificationError(f"readelf failed: {path}")
         sections = []
         for line in result.stdout.splitlines():
@@ -71,26 +80,39 @@ def verify_elf_section(ko_path, section_name: str) -> None:
                 if name and name != "NULL":
                     sections.append(name)
     except Exception as e:
+        if results is not None:
+            results.append((desc, False))
         raise VerificationError(f"Failed to parse ELF {path}: {e}")
     if section_name not in sections:
+        if results is not None:
+            results.append((desc, False))
         raise VerificationError(
             f"Section '{section_name}' not found in {os.path.basename(path)}; "
             f"available: {', '.join(sections[:20])}{'...' if len(sections) > 20 else ''}"
         )
+    if results is not None:
+        results.append((desc, True))
 
 
-def verify_diff_log_contains(tmp_dir, pattern: str) -> None:
+def verify_diff_log_contains(tmp_dir, pattern: str, *, results=None) -> None:
     """Verify that klp-tmp/diff/diff.log contains the given pattern."""
     base = str(tmp_dir)
     diff_log = os.path.join(base, "diff", "diff.log")
+    desc = f"verify_diff_log_contains({pattern!r})"
     if not os.path.isfile(diff_log):
+        if results is not None:
+            results.append((desc, False))
         raise VerificationError(f"diff.log not found: {diff_log}")
     with open(diff_log, "r", encoding="utf-8", errors="replace") as f:
         content = f.read()
     if pattern not in content:
+        if results is not None:
+            results.append((desc, False))
         raise VerificationError(
             f"Pattern {pattern!r} not found in diff.log\nContent (first 500 chars):\n{content[:500]}..."
         )
+    if results is not None:
+        results.append((desc, True))
 
 
 def verify_exit_code_nonzero(returncode: int) -> None:

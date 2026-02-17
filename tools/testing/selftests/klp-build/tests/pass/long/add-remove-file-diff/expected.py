@@ -161,10 +161,10 @@ def generate_patches(test_dir, kernel_root, out_path):
     return [out_path]
 
 
-def verify(*, ko_path=None, tmp_dir=None, **kwargs):
+def verify(*, ko_path=None, tmp_dir=None, results=None, **kwargs):
     if ko_path:
-        verify_ko_exists(ko_path)
-        verify_elf_section(ko_path, ".klp.rela.vmlinux..text")
+        verify_ko_exists(ko_path, results=results)
+        verify_elf_section(ko_path, ".klp.rela.vmlinux..text", results=results)
     if tmp_dir:
-        verify_diff_log_contains(tmp_dir, "changed function: meminfo_proc_show")
-        verify_diff_log_contains(tmp_dir, "changed function: cmdline_proc_show")
+        verify_diff_log_contains(tmp_dir, "changed function: meminfo_proc_show", results=results)
+        verify_diff_log_contains(tmp_dir, "changed function: cmdline_proc_show", results=results)
