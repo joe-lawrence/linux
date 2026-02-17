@@ -564,8 +564,8 @@ find_objects() {
 	local opts=("$@")
 
 	# Find root-level vmlinux.o and non-root-level .ko files,
-	# excluding klp-tmp/ and .git/
-	find "$OBJ" \( -path "$TMP_DIR" -o -path "$OBJ/.git" -o	-regex "$OBJ/[^/][^/]*\.ko" \) -prune -o \
+	# excluding klp-tmp/, .git/, and tools/
+	find "$OBJ" \( -path "$TMP_DIR" -o -path "$OBJ/.git" -o -path "$OBJ/tools" -o -regex "$OBJ/[^/][^/]*\.ko" \) -prune -o \
 		    -type f "${opts[@]}"				\
 		    \( -name "*.ko" -o -path "$OBJ/vmlinux.o" \)	\
 		    -printf '%P\n'
