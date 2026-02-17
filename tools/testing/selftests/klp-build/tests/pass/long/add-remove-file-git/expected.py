@@ -250,3 +250,41 @@ def verify(*, ko_path=None, tmp_dir=None, results=None, **kwargs):
     if tmp_dir:
         verify_diff_log_contains(tmp_dir, "changed function: meminfo_proc_show", results=results)
         verify_diff_log_contains(tmp_dir, "changed function: cmdline_proc_show", results=results)
+
+
+def verify_runtime(runtime):
+    """
+    Verify livepatch behavior at runtime.
+    
+    This test adds two new header files and removes a documentation file
+    using git format. We trigger /proc/cmdline and /proc/meminfo
+    to verify both patched functions work correctly.
+    
+    Args:
+        runtime: RuntimeContext object
+    """
+    # Trigger first patched function
+    cmdline = runtime.read_file("/proc/cmdline")
+    if not cmdline.strip():
+        raise AssertionError("Failed to read /proc/cmdline")
+    
+    # Trigger second patched function - read /proc/meminfo
+    meminfo = runtime.read_file("/proc/meminfo")
+    if not meminfo.strip():
+        raise AssertionError("Failed to read /proc/meminfo")
+    
+    # Check for messages from both new headers and cmdline
+    messages = runtime.dmesg.get_messages()
+    
+    cmdline_found = any("klp-build-test: add-remove-file-git test" in msg for msg in messages)
+    header1_found = any("klp-build-test: header1 included" in msg for msg in messages)
+    header2_found = any("klp-build-test: header2 included" in msg for msg in messages)
+    
+    if not cmdline_found:
+        raise AssertionError("cmdline test message not found in dmesg")
+    
+    if not header1_found:
+        raise AssertionError("Header1 inclusion message not found in dmesg")
+    
+    if not header2_found:
+        raise AssertionError("Header2 inclusion message not found in dmesg")
