@@ -11,6 +11,7 @@ import sys
 import os
 import time
 import argparse
+import subprocess
 from pathlib import Path
 
 # Add lib to path
@@ -42,6 +43,45 @@ from lib.livepatch import (
     is_module_loaded,
 )
 from lib.state import TestState, TestStatus
+
+
+def _get_kernel_version() -> str:
+    """Return running kernel version (e.g. uname -r)."""
+    try:
+        r = subprocess.run(
+            ["uname", "-r"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return r.stdout.strip() if r.returncode == 0 else "Unknown"
+    except Exception:
+        return "Unknown"
+
+
+def _write_runtime_log(path: Path, test_name: str, result_str: str, dmesg_content: str, extra_lines: list = None) -> None:
+    """Write runtime-test.log with banner format similar to build-test.log."""
+    kernel = _get_kernel_version()
+    extra = (extra_lines or [])
+    with open(path, "w") as log:
+        log.write(f"{'='*70}\n")
+        log.write(f"RUNTIME LOG: {test_name}\n")
+        log.write(f"{'='*70}\n")
+        log.write(f"Result:     {result_str}\n")
+        log.write(f"\n")
+        log.write(f"Kernel:     {kernel}\n")
+        log.write(f"\n")
+        for line in extra:
+            log.write(f"{line}\n")
+        if extra:
+            log.write(f"\n")
+        log.write(f"{'='*70}\n")
+        log.write("DMESG LOG (captured during test)\n")
+        log.write(f"{'='*70}\n")
+        log.write(dmesg_content)
+        if dmesg_content and not dmesg_content.endswith("\n"):
+            log.write("\n")
+        log.write("\n")
 
 
 class TapReporter:
@@ -151,9 +191,11 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
     
     print()
     print(f"{colors.cyan}Running runtime verification tests...{colors.reset}")
-    print(f"{colors.yellow}Warning: Tests will stop on first failure for debugging{colors.reset}")
     print(f"Livepatch transition timeout: {transition_timeout}s")
     print()
+    
+    # Track test results
+    failed_tests = []
     
     for i, test_case_dir in enumerate(runtime_tests):
         test_name = get_test_name(test_case_dir)
@@ -186,10 +228,13 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
         # Verify we found the .ko file
         if not ko_file:
             error_msg = "no .ko file in artifacts"
-            print(f"{colors.red}FAIL: {error_msg}{colors.reset}")
+            print(f"{colors.red}ERROR: {error_msg}{colors.reset}")
             tap.print_test(test_name, TestStatus.ERROR, error_msg)
-            state.mark_runtime_failed(test_name, error_msg)
-            return 1  # Stop on first failure
+            state.mark_runtime_error(test_name, error_msg)
+            failed_tests.append(test_name)
+            
+            _write_runtime_log(runtime_log, test_name, "ERROR", "", extra_lines=[f"Error: {error_msg}"])
+            continue
         
         try:
             # Load expected module
@@ -221,23 +266,15 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
                         
                         tap.print_test(test_name, TestStatus.FAILED, error_details)
                         state.mark_runtime_failed(test_name, str(e))
+                        failed_tests.append(test_name)
                         
-                        # Write log
-                        with open(runtime_log, 'w') as log:
-                            log.write(f"Runtime Test: {test_name}\n")
-                            log.write(f"Result: TIMEOUT\n")
-                            log.write(f"{'='*70}\n\n")
-                            log.write(error_details + "\n\n")
-                            log.write(f"{'='*70}\n")
-                            log.write("DMESG LOG\n")
-                            log.write(f"{'='*70}\n")
-                            log.write(dmesg.get_full_log())
-                        
-                        print()
-                        print(f"{colors.red}Stopping on transition timeout{colors.reset}")
+                        _write_runtime_log(
+                            runtime_log, test_name, "TIMEOUT", dmesg.get_full_log(),
+                            extra_lines=[error_details],
+                        )
                         print(f"{colors.yellow}Module still loaded - check system state{colors.reset}")
-                        print(f"Dmesg saved to: {runtime_log}")
-                        return 1
+                        print(f"Log: {runtime_log}")
+                        continue
                 
                 # Create runtime context and run verification while still capturing dmesg
                 runtime = RuntimeContext(ko_file, mod_name, dmesg)
@@ -255,29 +292,19 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
             if dmesg.has_call_trace():
                 issues.append("Kernel call trace detected in dmesg")
             
-            # Write runtime log
-            with open(runtime_log, 'w') as log:
-                log.write(f"Runtime Test: {test_name}\n")
-                log.write(f"Result: {'PASSED' if not issues else 'FAILED'}\n")
-                if issues:
-                    log.write(f"Issues: {', '.join(issues)}\n")
-                log.write(f"{'='*70}\n\n")
-                
-                log.write(f"DMESG LOG (captured during test)\n")
-                log.write(f"{'='*70}\n")
-                log.write(dmesg.get_full_log())
-                log.write(f"\n{'='*70}\n")
-            
+            result_str = "PASSED" if not issues else "FAILED"
+            extra = [f"Issues: {', '.join(issues)}"] if issues else None
+            _write_runtime_log(runtime_log, test_name, result_str, dmesg.get_full_log(), extra_lines=extra)
+
             # If there were issues, fail the test
             if issues:
                 print(f"{colors.red}FAIL: {', '.join(issues)}{colors.reset}")
-                error_msg = '\n'.join(issues) + f"\nSee: {runtime_log}"
+                error_msg = '\n'.join(issues)
                 tap.print_test(test_name, TestStatus.FAILED, error_msg)
                 state.mark_runtime_failed(test_name, '; '.join(issues))
-                print()
-                print(f"{colors.red}Stopping on test failure{colors.reset}")
-                print(f"Dmesg log: {runtime_log}")
-                return 1
+                failed_tests.append(test_name)
+                print(f"Log: {runtime_log}")
+                continue
             
             # Verification passed - cleanup
             print(f"{colors.yellow}cleaning up...{colors.reset} ", end="", flush=True)
@@ -299,49 +326,45 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
             print(f"{colors.red}FAIL: {e}{colors.reset}")
             tap.print_test(test_name, TestStatus.FAILED, str(e))
             state.mark_runtime_failed(test_name, str(e))
+            failed_tests.append(test_name)
             
-            # Write error log
-            with open(runtime_log, 'w') as log:
-                log.write(f"Runtime Test: {test_name}\n")
-                log.write(f"Result: FAILED\n")
-                log.write(f"Error: {e}\n")
-                log.write(f"{'='*70}\n\n")
-                if 'dmesg' in locals():
-                    log.write(f"DMESG LOG\n")
-                    log.write(f"{'='*70}\n")
-                    log.write(dmesg.get_full_log())
-            
-            print()
-            print(f"{colors.red}Stopping on first failure{colors.reset}")
+            try:
+                dmesg_log = dmesg.get_full_log()
+            except NameError:
+                dmesg_log = ""
+            _write_runtime_log(runtime_log, test_name, "FAILED", dmesg_log, extra_lines=[f"Error: {e}"])
+
             print(f"{colors.yellow}Module may still be loaded - manual cleanup required{colors.reset}")
             print(f"Check: lsmod | grep {mod_name if 'mod_name' in locals() else 'livepatch'}")
             print(f"Log: {runtime_log}")
-            return 1  # Stop immediately
+            continue
             
         except Exception as e:
             print(f"{colors.red}ERROR: {e}{colors.reset}")
             tap.print_test(test_name, TestStatus.ERROR, str(e))
             state.mark_runtime_error(test_name, str(e))
+            failed_tests.append(test_name)
             
-            # Write error log
-            with open(runtime_log, 'w') as log:
-                log.write(f"Runtime Test: {test_name}\n")
-                log.write(f"Result: ERROR\n")
-                log.write(f"Error: {e}\n")
-                log.write(f"{'='*70}\n\n")
-                if 'dmesg' in locals():
-                    log.write(f"DMESG LOG\n")
-                    log.write(f"{'='*70}\n")
-                    log.write(dmesg.get_full_log())
-            
-            print()
-            print(f"{colors.red}Stopping on error{colors.reset}")
+            try:
+                dmesg_log = dmesg.get_full_log()
+            except NameError:
+                dmesg_log = ""
+            _write_runtime_log(runtime_log, test_name, "ERROR", dmesg_log, extra_lines=[f"Error: {e}"])
+
             print(f"Log: {runtime_log}")
-            return 1  # Stop immediately
-    
-    # All tests passed
+            continue
+
+    # Print summary
     print()
     tap.print_summary()
+    
+    if failed_tests:
+        print()
+        print(f"{colors.red}Failed tests ({len(failed_tests)}):{colors.reset}")
+        for test_name in failed_tests:
+            print(f"  - {test_name}")
+        return 1
+    
     return 0 if tap.failed == 0 else 1
 
 
