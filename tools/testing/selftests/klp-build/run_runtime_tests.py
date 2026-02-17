@@ -113,13 +113,23 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
     
     # Find tests that have runtime verification
     runtime_tests = []
+    artifacts_dir = get_artifacts_dir()
+    
     for test_case_dir in test_cases:
         test_name = get_test_name(test_case_dir)
         
-        # Find the .ko file from build artifacts
-        artifact_dir = get_artifacts_dir() / test_name
-        ko_files = list(artifact_dir.glob("*.ko")) if artifact_dir.exists() else []
-        ko_file = ko_files[0] if ko_files else None
+        # Find the .ko file from build artifacts (search across profile directories)
+        test_basename = test_case_dir.name
+        ko_file = None
+        if artifacts_dir.exists():
+            for profile_dir in artifacts_dir.iterdir():
+                if profile_dir.is_dir():
+                    test_artifact_dir = profile_dir / test_basename
+                    if test_artifact_dir.exists():
+                        ko_files = list(test_artifact_dir.glob("*.ko"))
+                        if ko_files:
+                            ko_file = ko_files[0]
+                            break
         
         # Check if we should run this test (with dependency checking)
         if not state.should_run_runtime(test_name, force=args.force, test_case_dir=test_case_dir, ko_file=ko_file):
@@ -147,25 +157,39 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
     
     for i, test_case_dir in enumerate(runtime_tests):
         test_name = get_test_name(test_case_dir)
+        test_basename = test_case_dir.name
         
-        # Prepare artifact directory for logs
-        artifact_dir = get_artifacts_dir() / test_name
+        # Find artifact directory across profiles
+        artifact_dir = None
+        ko_file = None
+        artifacts_dir = get_artifacts_dir()
+        
+        if artifacts_dir.exists():
+            for profile_dir in artifacts_dir.iterdir():
+                if profile_dir.is_dir():
+                    test_artifact_dir = profile_dir / test_basename
+                    if test_artifact_dir.exists():
+                        ko_files = list(test_artifact_dir.glob("*.ko"))
+                        if ko_files:
+                            artifact_dir = test_artifact_dir
+                            ko_file = ko_files[0]
+                            break
+        
+        if not artifact_dir:
+            artifact_dir = artifacts_dir / test_name
+        
         artifact_dir.mkdir(parents=True, exist_ok=True)
         runtime_log = artifact_dir / "runtime-test.log"
         
         print(f"[{i+1}/{len(runtime_tests)}] {colors.cyan}{test_name}:{colors.reset} ", end="", flush=True)
         
-        # Find the .ko file from build artifacts
-        ko_files = list(artifact_dir.glob("*.ko"))
-        
-        if not ko_files:
+        # Verify we found the .ko file
+        if not ko_file:
             error_msg = "no .ko file in artifacts"
             print(f"{colors.red}FAIL: {error_msg}{colors.reset}")
             tap.print_test(test_name, TestStatus.ERROR, error_msg)
             state.mark_runtime_failed(test_name, error_msg)
             return 1  # Stop on first failure
-        
-        ko_file = ko_files[0]
         
         try:
             # Load expected module
@@ -552,9 +576,17 @@ def main():
     for test_case in test_cases:
         test_name = get_test_name(test_case)
         
-        # Check if .ko artifact exists (only run runtime tests for what was built)
-        artifact_dir = artifacts_dir / test_name
-        ko_files = list(artifact_dir.glob("*.ko")) if artifact_dir.exists() else []
+        # Check if .ko artifact exists (search across all profile directories)
+        # Artifacts are organized as: artifacts/<profile>/<test_name>/*.ko
+        ko_files = []
+        if artifacts_dir.exists():
+            # Extract just the test name without pass/quick/ prefix for artifact lookup
+            test_basename = test_case.name
+            for profile_dir in artifacts_dir.iterdir():
+                if profile_dir.is_dir():
+                    test_artifact_dir = profile_dir / test_basename
+                    if test_artifact_dir.exists():
+                        ko_files.extend(test_artifact_dir.glob("*.ko"))
         
         if not ko_files:
             print(f"{colors.dim}Skipping {test_name}: no .ko artifact (not built){colors.reset}")
