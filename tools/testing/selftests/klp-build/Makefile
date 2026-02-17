@@ -32,6 +32,7 @@ help:
 	@printf "  %-32s - %s\n" "build_tests" "Run full build test suite (no PROFILE: current .config; PROFILE=...: stash, run each, restore)"
 	@printf "  %-32s - %s\n" "build_tests_quick" "Run quick tests only (pass/quick + fail/quick)"
 	@printf "  %-32s - %s\n" "build_tests PROFILE=a b" "Run build_tests for each profile (e.g. full-default full-default+overlay-thin-lto)"
+	@printf "  %-32s - %s\n" "runtime_tests" "Run runtime tests (auto-detects vng profile for VM mode)"
 	@printf "  %-32s - %s\n" "clean" "Remove __pycache__, *-generated.patch, and artifacts under selftest"
 
 # Stash path for .config when running build_tests with PROFILE=...
@@ -67,9 +68,25 @@ build_tests_quick:
 		exit $$rc; \
 	fi
 
+# runtime_tests: automatically detect virtme-ng profile and use VM mode if found
+runtime_tests:
+	@VNG_FLAG=""; \
+	for profile_dir in "$(SELFTEST_DIR)/artifacts/"*/; do \
+		if [ -d "$$profile_dir" ] && [ -f "$$profile_dir/profile" ]; then \
+			profile_name=$$(cat "$$profile_dir/profile" 2>/dev/null); \
+			case "$$profile_name" in \
+				*virtme-ng*) \
+					VNG_FLAG="--vng"; \
+					break; \
+					;; \
+			esac; \
+		fi; \
+	done; \
+	cd "$(KERNEL_SRC)" && python3 "$(SELFTEST_DIR)/run_runtime_tests.py" $$VNG_FLAG
+
 clean:
 	@find "$(SELFTEST_DIR)" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; true
 	@find "$(SELFTEST_DIR)/tests" -type f -name '*-generated.patch' -delete 2>/dev/null; true
 	@rm -rf "$(SELFTEST_DIR)/artifacts"
 
-.PHONY: tests_config build_tests build_tests_quick clean help
+.PHONY: tests_config build_tests build_tests_quick runtime_tests clean help
