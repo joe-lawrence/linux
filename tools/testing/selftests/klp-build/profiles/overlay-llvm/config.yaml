@@ -1,0 +1,13 @@
+# Overlay: clang/LLVM toolchain only (no LTO).
+name: overlay-llvm
+description: Clang/LLVM overlay
+
+config_apply:
+  - ../0000-klp-build.fragment
+
+toolchain:
+  compiler: clang
+  linker: ld.lld
+  assembler: clang
+
+runtime: true
