@@ -41,6 +41,23 @@ def _clear_klp_tmp_downstream(kernel_root: str) -> None:
             shutil.rmtree(path, ignore_errors=True)
 
 
+def _copy_klp_tmp_to_artifacts(kernel_root: str, artifact_dir: str) -> None:
+    """
+    Copy kernel_root/klp-tmp to artifact_dir/klp-tmp for later inspection.
+    Preserves per-test klp-tmp (orig, patched, diff, kmod) when KLP_BUILD_KEEP_TMP is set.
+    """
+    if not os.environ.get("KLP_BUILD_KEEP_TMP"):
+        return
+    klp_tmp_src = os.path.join(kernel_root, "klp-tmp")
+    klp_tmp_dst = os.path.join(artifact_dir, "klp-tmp")
+    if not os.path.isdir(klp_tmp_src):
+        return
+    os.makedirs(artifact_dir, exist_ok=True)
+    if os.path.isdir(klp_tmp_dst):
+        shutil.rmtree(klp_tmp_dst)
+    shutil.copytree(klp_tmp_src, klp_tmp_dst)
+
+
 def set_toolchain_env_from_config(config_path: str) -> None:
     """
     Set CC and LLVM in os.environ to match the current .config so that
@@ -112,6 +129,16 @@ def main():
         metavar="NAME",
         help="Run only the test with this exact name (e.g. thin-lto-type-show)",
     )
+    parser.add_argument(
+        "--keep-klp-tmp",
+        action="store_true",
+        help="Copy klp-tmp to artifacts after each build (same as KLP_BUILD_KEEP_TMP=1)",
+    )
+    parser.add_argument(
+        "--copy-klp-tmp-to",
+        metavar="TEST_ID",
+        help="Copy current kernel klp-tmp to artifacts for this test and exit (e.g. fail/long/recount-many-files)",
+    )
     args = parser.parse_args()
 
     selftest_root = _SCRIPT_DIR
@@ -121,6 +148,27 @@ def main():
 
     profile_name = _resolve_profile(artifacts_root, config_path, args.profile)
     _ensure_profile_artifact_dir(artifacts_root, profile_name, config_path)
+
+    # Direct copy of klp-tmp for a single test (reproduce / inspect after manual run)
+    if args.copy_klp_tmp_to is not None:
+        kernel_root = os.path.abspath(os.path.join(selftest_root, "..", "..", "..", ".."))
+        test_id = args.copy_klp_tmp_to.strip()
+        test_name = test_id.split("/")[-1] if "/" in test_id else test_id
+        artifact_dir = os.path.join(artifacts_root, profile_name, test_name)
+        klp_tmp_src = os.path.join(kernel_root, "klp-tmp")
+        if not os.path.isdir(klp_tmp_src):
+            print(f"error: no klp-tmp at {klp_tmp_src}", file=sys.stderr)
+            return 1
+        os.makedirs(artifact_dir, exist_ok=True)
+        klp_tmp_dst = os.path.join(artifact_dir, "klp-tmp")
+        if os.path.isdir(klp_tmp_dst):
+            shutil.rmtree(klp_tmp_dst)
+        shutil.copytree(klp_tmp_src, klp_tmp_dst)
+        print(f"Copied klp-tmp to {artifact_dir}/klp-tmp", flush=True)
+        return 0
+
+    if args.keep_klp_tmp:
+        os.environ["KLP_BUILD_KEEP_TMP"] = "1"
 
     if args.profile:
         from lib.profile import apply_toolchain_for_profile
@@ -208,6 +256,7 @@ def main():
             if expect_success:
                 if out.returncode != 0:
                     write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
+                    _copy_klp_tmp_to_artifacts(kernel_root, artifact_dir)
                     print(f"not ok {test_num} - {desc_prefix}{test_id} (exit {out.returncode}){run_comment}", flush=True)
                     test_num += 1
                     failed += 1
@@ -222,12 +271,14 @@ def main():
                     results=verification_results,
                 )
                 write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
+                _copy_klp_tmp_to_artifacts(kernel_root, artifact_dir)
                 print(f"ok {test_num} - {desc_prefix}{test_id}{run_comment}", flush=True)
                 test_num += 1
                 passed += 1
             else:
                 # Fail test: expect non-zero exit; write log before verify so it exists even when verify raises
                 write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
+                _copy_klp_tmp_to_artifacts(kernel_root, artifact_dir)
                 run_verify(
                     test_dir,
                     returncode=out.returncode,
@@ -238,6 +289,7 @@ def main():
                     results=verification_results,
                 )
                 write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
+                _copy_klp_tmp_to_artifacts(kernel_root, artifact_dir)
                 if out.returncode == 0:
                     print(f"not ok {test_num} - {desc_prefix}{test_id} (expected non-zero exit){run_comment}", flush=True)
                     test_num += 1
@@ -248,6 +300,7 @@ def main():
                     passed += 1
         except VerificationError as e:
             write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=verification_results)
+            _copy_klp_tmp_to_artifacts(kernel_root, artifact_dir)
             print(f"not ok {test_num} - {desc_prefix}{test_id} ({e})", flush=True)
             test_num += 1
             failed += 1
@@ -256,6 +309,7 @@ def main():
                 loc = locals()
                 if "out" in loc and "artifact_dir" in loc and "test_id" in loc:
                     write_build_log(out, test_id, artifact_dir, kernel_root, patch_paths, verbose=args.verbose, verification_results=loc.get("verification_results"))
+                    _copy_klp_tmp_to_artifacts(kernel_root, artifact_dir)
             except Exception:
                 pass
             print(f"not ok {test_num} - {desc_prefix}{test_id} ({e})", flush=True)
