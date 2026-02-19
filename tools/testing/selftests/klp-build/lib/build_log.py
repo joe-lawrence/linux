@@ -18,24 +18,14 @@ def _get_toolchain_info(kernel_root: str) -> dict:
     }
     try:
         proc = subprocess.run(
-            ["git", "describe", "HEAD"],
+            ["make", "-s", "kernelrelease"],
             cwd=kernel_root,
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=15,
         )
         if proc.returncode == 0:
             info["kernel"] = proc.stdout.strip()
-        else:
-            proc = subprocess.run(
-                ["git", "rev-parse", "--short", "HEAD"],
-                cwd=kernel_root,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if proc.returncode == 0:
-                info["kernel"] = proc.stdout.strip()
     except Exception:
         pass
 

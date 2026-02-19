@@ -45,15 +45,24 @@ from lib.livepatch import (
 from lib.state import TestStatus
 
 
-def _get_kernel_version() -> str:
-    """Return running kernel version (e.g. uname -r)."""
+def _get_kernel_version(kernel_src: Path = None) -> str:
+    """Return kernel version: from source tree (make kernelrelease) if kernel_src given, else uname -r."""
     try:
-        r = subprocess.run(
-            ["uname", "-r"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
+        if kernel_src is not None:
+            r = subprocess.run(
+                ["make", "-s", "kernelrelease"],
+                cwd=str(kernel_src),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        else:
+            r = subprocess.run(
+                ["uname", "-r"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
         return r.stdout.strip() if r.returncode == 0 else "Unknown"
     except Exception:
         return "Unknown"
@@ -68,7 +77,7 @@ def _write_runtime_log(
     verification_section: str = None,
 ) -> None:
     """Write runtime-test.log with banner format similar to build-test.log."""
-    kernel = _get_kernel_version()
+    kernel = _get_kernel_version(get_kernel_src_dir())
     extra = (extra_lines or [])
     with open(path, "w") as log:
         log.write(f"{'='*70}\n")
