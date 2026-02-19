@@ -251,7 +251,7 @@ def run_runtime_tests(test_cases: list[Path], args) -> int:
             tap.print_test(test_name, TestStatus.ERROR, error_msg)
             failed_tests.append(test_name)
             
-            _write_runtime_log(runtime_log, test_name, "ERROR", "", extra_lines=[f"Error: {error_msg}"])
+            _write_runtime_log(runtime_log, test_name, "FAILURE", "", extra_lines=[f"Error: {error_msg}"])
             continue
         
         try:
@@ -286,7 +286,7 @@ def run_runtime_tests(test_cases: list[Path], args) -> int:
                         failed_tests.append(test_name)
                         
                         _write_runtime_log(
-                            runtime_log, test_name, "TIMEOUT", dmesg.get_full_log(),
+                            runtime_log, test_name, "FAILURE", dmesg.get_full_log(),
                             extra_lines=[error_details],
                             verification_section=runtime.get_verification_log(),
                         )
@@ -310,7 +310,7 @@ def run_runtime_tests(test_cases: list[Path], args) -> int:
             if dmesg.has_call_trace():
                 issues.append("Kernel call trace detected in dmesg")
             
-            result_str = "PASSED" if not issues else "FAILED"
+            result_str = "SUCCESS" if not issues else "FAILURE"
             extra = [f"Issues: {', '.join(issues)}"] if issues else None
             _write_runtime_log(
                 runtime_log, test_name, result_str, dmesg.get_full_log(),
@@ -355,7 +355,7 @@ def run_runtime_tests(test_cases: list[Path], args) -> int:
             except NameError:
                 verification_section = ""
             _write_runtime_log(
-                runtime_log, test_name, "FAILED", dmesg_log,
+                runtime_log, test_name, "FAILURE", dmesg_log,
                 extra_lines=[f"Error: {e}"],
                 verification_section=verification_section,
             )
@@ -379,7 +379,7 @@ def run_runtime_tests(test_cases: list[Path], args) -> int:
             except NameError:
                 verification_section = ""
             _write_runtime_log(
-                runtime_log, test_name, "ERROR", dmesg_log,
+                runtime_log, test_name, "FAILURE", dmesg_log,
                 extra_lines=[f"Error: {e}"],
                 verification_section=verification_section,
             )
