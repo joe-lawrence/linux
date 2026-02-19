@@ -41,6 +41,14 @@ def _clear_klp_tmp_downstream(kernel_root: str) -> None:
             shutil.rmtree(path, ignore_errors=True)
 
 
+def _copy_patches_to_artifacts(patch_paths: list, artifact_dir: str) -> None:
+    """Copy each (static or generated) .patch file into the test's artifacts dir."""
+    os.makedirs(artifact_dir, exist_ok=True)
+    for p in patch_paths:
+        if os.path.isfile(p):
+            shutil.copy2(p, os.path.join(artifact_dir, os.path.basename(p)))
+
+
 def _copy_klp_tmp_to_artifacts(kernel_root: str, artifact_dir: str) -> None:
     """
     Copy kernel_root/klp-tmp to artifact_dir/klp-tmp for later inspection.
@@ -231,6 +239,7 @@ def main():
         print(f"# Starting build: {desc_prefix}{test_id}", flush=True)
         test_name = test_id.split("/")[-1]
         artifact_dir = os.path.join(artifacts_root, profile_name, test_name)
+        _copy_patches_to_artifacts(patch_paths, artifact_dir)
         verification_results = []
         try:
             t0 = time.monotonic()
