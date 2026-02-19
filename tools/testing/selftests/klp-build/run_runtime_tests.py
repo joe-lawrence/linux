@@ -59,7 +59,14 @@ def _get_kernel_version() -> str:
         return "Unknown"
 
 
-def _write_runtime_log(path: Path, test_name: str, result_str: str, dmesg_content: str, extra_lines: list = None) -> None:
+def _write_runtime_log(
+    path: Path,
+    test_name: str,
+    result_str: str,
+    dmesg_content: str,
+    extra_lines: list = None,
+    verification_section: str = None,
+) -> None:
     """Write runtime-test.log with banner format similar to build-test.log."""
     kernel = _get_kernel_version()
     extra = (extra_lines or [])
@@ -75,6 +82,14 @@ def _write_runtime_log(path: Path, test_name: str, result_str: str, dmesg_conten
             log.write(f"{line}\n")
         if extra:
             log.write(f"\n")
+        if verification_section:
+            log.write(f"{'='*70}\n")
+            log.write("RUNTIME VERIFICATION\n")
+            log.write(f"{'='*70}\n\n")
+            log.write(verification_section)
+            if verification_section and not verification_section.endswith("\n"):
+                log.write("\n")
+            log.write("\n")
         log.write(f"{'='*70}\n")
         log.write("DMESG LOG (captured during test)\n")
         log.write(f"{'='*70}\n")
@@ -264,6 +279,7 @@ def run_runtime_tests(test_cases: list[Path], args) -> int:
                         _write_runtime_log(
                             runtime_log, test_name, "TIMEOUT", dmesg.get_full_log(),
                             extra_lines=[error_details],
+                            verification_section=runtime.get_verification_log(),
                         )
                         print(f"{colors.yellow}Module still loaded - check system state{colors.reset}")
                         print(f"Log: {runtime_log}")
@@ -287,7 +303,11 @@ def run_runtime_tests(test_cases: list[Path], args) -> int:
             
             result_str = "PASSED" if not issues else "FAILED"
             extra = [f"Issues: {', '.join(issues)}"] if issues else None
-            _write_runtime_log(runtime_log, test_name, result_str, dmesg.get_full_log(), extra_lines=extra)
+            _write_runtime_log(
+                runtime_log, test_name, result_str, dmesg.get_full_log(),
+                extra_lines=extra,
+                verification_section=runtime.get_verification_log(),
+            )
 
             # If there were issues, fail the test
             if issues:
@@ -321,7 +341,15 @@ def run_runtime_tests(test_cases: list[Path], args) -> int:
                 dmesg_log = dmesg.get_full_log()
             except NameError:
                 dmesg_log = ""
-            _write_runtime_log(runtime_log, test_name, "FAILED", dmesg_log, extra_lines=[f"Error: {e}"])
+            try:
+                verification_section = runtime.get_verification_log()
+            except NameError:
+                verification_section = ""
+            _write_runtime_log(
+                runtime_log, test_name, "FAILED", dmesg_log,
+                extra_lines=[f"Error: {e}"],
+                verification_section=verification_section,
+            )
 
             print(f"{colors.yellow}Module may still be loaded - manual cleanup required{colors.reset}")
             print(f"Check: lsmod | grep {mod_name if 'mod_name' in locals() else 'livepatch'}")
@@ -337,7 +365,15 @@ def run_runtime_tests(test_cases: list[Path], args) -> int:
                 dmesg_log = dmesg.get_full_log()
             except NameError:
                 dmesg_log = ""
-            _write_runtime_log(runtime_log, test_name, "ERROR", dmesg_log, extra_lines=[f"Error: {e}"])
+            try:
+                verification_section = runtime.get_verification_log()
+            except NameError:
+                verification_section = ""
+            _write_runtime_log(
+                runtime_log, test_name, "ERROR", dmesg_log,
+                extra_lines=[f"Error: {e}"],
+                verification_section=verification_section,
+            )
 
             print(f"Log: {runtime_log}")
             continue

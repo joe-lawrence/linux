@@ -3,6 +3,7 @@
 """Runtime livepatch operations for testing."""
 
 import os
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -129,60 +130,88 @@ class DmesgCapture:
 class RuntimeContext:
     """
     Context object passed to verify_runtime() functions.
-    
+
     Provides access to:
     - ko_file: Path to the loaded .ko file
     - mod_name: Loaded module name
     - dmesg: DmesgCapture for message verification
     - Helper methods for triggering and reading kernel state
+
+    All read_sysfs/read_file and run_command calls are recorded for the
+    RUNTIME VERIFICATION section of runtime-test.log.
     """
-    
+
     def __init__(self, ko_file: Path, mod_name: str, dmesg: DmesgCapture):
         self.ko_file = ko_file
         self.mod_name = mod_name
         self.dmesg = dmesg
-    
+        self._verification_log = []
+
+    def _log_read(self, path: str, content: str) -> None:
+        """Record a file read for the verification log."""
+        self._verification_log.append(
+            f"# Read {path}\n$ cat {path}\n{content.rstrip()}"
+        )
+
+    def _log_command(self, cmd: list, result: subprocess.CompletedProcess) -> None:
+        """Record a command run for the verification log."""
+        cmd_str = " ".join(shlex.quote(c) for c in cmd)
+        block = f"$ {cmd_str}\n{result.stdout.rstrip()}"
+        if result.stderr:
+            block += f"\n{result.stderr.rstrip()}"
+        self._verification_log.append(block)
+
+    def get_verification_log(self) -> str:
+        """Return recorded reads/commands for the RUNTIME VERIFICATION log section."""
+        if not self._verification_log:
+            return ""
+        return "\n\n".join(self._verification_log)
+
     def read_sysfs(self, path: str) -> str:
         """
         Read a sysfs/procfs file.
-        
+
         Args:
             path: Filesystem path to read
-            
+
         Returns:
             File contents as string
         """
-        return Path(path).read_text()
-    
+        content = Path(path).read_text()
+        self._log_read(path, content)
+        return content
+
     def write_sysfs(self, path: str, content: str) -> None:
         """
         Write to a sysfs/procfs file.
-        
+
         Args:
             path: Filesystem path to write
             content: Content to write
         """
         Path(path).write_text(content)
-    
+
     def read_file(self, path: str) -> str:
         """Read a file (alias for read_sysfs for clarity)."""
         return self.read_sysfs(path)
-    
+
     def write_file(self, path: str, content: str) -> None:
         """Write a file (alias for write_sysfs for clarity)."""
         self.write_sysfs(path, content)
-    
+
     def run_command(self, cmd: list[str]) -> subprocess.CompletedProcess:
         """
         Run a command and return the result.
-        
+
         Args:
             cmd: Command and arguments as list
-            
+
         Returns:
             CompletedProcess object
         """
-        return subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        self._log_command(cmd, result)
+        return result
 
 
 def load_module(ko_file: Path) -> str:
