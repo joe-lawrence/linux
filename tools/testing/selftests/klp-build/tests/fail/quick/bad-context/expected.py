@@ -9,8 +9,8 @@ from verification import (
 EXPECT_SUCCESS = False
 
 
-def verify(*, returncode=None, stderr=None, **kwargs):
+def verify(*, returncode=None, stderr=None, results=None, **kwargs):
     if returncode is not None:
-        verify_exit_code_nonzero(returncode)
+        verify_exit_code_nonzero(returncode, results=results)
     if stderr is not None:
-        verify_stderr_matches(stderr, r"did not apply")
+        verify_stderr_matches(stderr, r"did not apply", results=results)

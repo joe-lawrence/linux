@@ -31,9 +31,9 @@ def generate_patches(test_dir, kernel_root, out_path):
     return [out_path]
 
 
-def verify(*, returncode=None, stderr=None, **kwargs):
+def verify(*, returncode=None, stderr=None, results=None, **kwargs):
     """Verify klp-build detects no changes and fails with expected message."""
     if returncode is not None:
-        verify_exit_code_nonzero(returncode)
+        verify_exit_code_nonzero(returncode, results=results)
     if stderr is not None:
-        verify_stderr_matches(stderr, EXPECT_ERROR)
+        verify_stderr_matches(stderr, EXPECT_ERROR, results=results)

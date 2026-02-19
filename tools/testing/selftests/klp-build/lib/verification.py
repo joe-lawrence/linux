@@ -124,16 +124,20 @@ def verify_diff_log_contains(tmp_dir, pattern: str, *, results=None) -> None:
         results.append((desc, True))
 
 
-def verify_exit_code_nonzero(returncode: int) -> None:
+def verify_exit_code_nonzero(returncode: int, *, results=None) -> None:
     """Raise VerificationError if returncode is 0."""
     if returncode == 0:
         raise VerificationError("Expected non-zero exit code")
+    if results is not None:
+        results.append(("exit code non-zero (expected failure)", True))
 
 
-def verify_stderr_matches(stderr: str, pattern: str) -> None:
+def verify_stderr_matches(stderr: str, pattern: str, *, results=None) -> None:
     """Raise VerificationError if stderr does not match the regex pattern."""
     if not stderr or not re.search(pattern, stderr, re.IGNORECASE):
         raise VerificationError(f"Expected stderr to match {pattern!r}")
+    if results is not None:
+        results.append((f"stderr matched pattern {pattern!r}", True))
 
 
 def run_verify(test_dir: str, **kwargs) -> None:

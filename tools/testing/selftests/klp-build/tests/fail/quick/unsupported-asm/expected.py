@@ -32,8 +32,8 @@ def generate_patches(test_dir, kernel_root, out_path):
     return [out_path]
 
 
-def verify(*, returncode=None, stderr=None, **kwargs):
+def verify(*, returncode=None, stderr=None, results=None, **kwargs):
     if returncode is not None:
-        verify_exit_code_nonzero(returncode)
+        verify_exit_code_nonzero(returncode, results=results)
     if stderr is not None:
-        verify_stderr_matches(stderr, r"unsupported patch to.*\.S")
+        verify_stderr_matches(stderr, r"unsupported patch to.*\.S", results=results)
