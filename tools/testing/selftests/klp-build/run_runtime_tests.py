@@ -42,7 +42,7 @@ from lib.livepatch import (
     check_clean_environment,
     is_module_loaded,
 )
-from lib.state import TestState, TestStatus
+from lib.state import TestStatus
 
 
 def _get_kernel_version() -> str:
@@ -133,15 +133,14 @@ class TapReporter:
               f"skip:{self.skipped} total:{total}")
 
 
-def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
+def run_runtime_tests(test_cases: list[Path], args) -> int:
     """
     Run runtime tests for each test case with a verify_runtime() function.
-    
+
     Args:
         test_cases: List of test case directories
-        state: TestState for tracking progress
         args: Command line arguments
-        
+
     Returns:
         Exit code (0 if all passed, 1 if any failed)
     """
@@ -170,10 +169,6 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
                         if ko_files:
                             ko_file = ko_files[0]
                             break
-        
-        # Check if we should run this test (with dependency checking)
-        if not state.should_run_runtime(test_name, force=args.force, test_case_dir=test_case_dir, ko_file=ko_file):
-            continue
         
         try:
             expected = load_expected_module(test_case_dir)
@@ -230,7 +225,6 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
             error_msg = "no .ko file in artifacts"
             print(f"{colors.red}ERROR: {error_msg}{colors.reset}")
             tap.print_test(test_name, TestStatus.ERROR, error_msg)
-            state.mark_runtime_error(test_name, error_msg)
             failed_tests.append(test_name)
             
             _write_runtime_log(runtime_log, test_name, "ERROR", "", extra_lines=[f"Error: {error_msg}"])
@@ -265,7 +259,6 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
                         )
                         
                         tap.print_test(test_name, TestStatus.FAILED, error_details)
-                        state.mark_runtime_failed(test_name, str(e))
                         failed_tests.append(test_name)
                         
                         _write_runtime_log(
@@ -301,7 +294,6 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
                 print(f"{colors.red}FAIL: {', '.join(issues)}{colors.reset}")
                 error_msg = '\n'.join(issues)
                 tap.print_test(test_name, TestStatus.FAILED, error_msg)
-                state.mark_runtime_failed(test_name, '; '.join(issues))
                 failed_tests.append(test_name)
                 print(f"Log: {runtime_log}")
                 continue
@@ -319,13 +311,10 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
             
             print(f"{colors.green}PASS{colors.reset}")
             tap.print_test(test_name, TestStatus.PASSED)
-            state.mark_runtime_passed(test_name)
-            state.record_runtime_dependencies(test_name, test_case_dir, ko_file)
-            
+
         except LivepatchError as e:
             print(f"{colors.red}FAIL: {e}{colors.reset}")
             tap.print_test(test_name, TestStatus.FAILED, str(e))
-            state.mark_runtime_failed(test_name, str(e))
             failed_tests.append(test_name)
             
             try:
@@ -342,7 +331,6 @@ def run_runtime_tests(test_cases: list[Path], state: TestState, args) -> int:
         except Exception as e:
             print(f"{colors.red}ERROR: {e}{colors.reset}")
             tap.print_test(test_name, TestStatus.ERROR, str(e))
-            state.mark_runtime_error(test_name, str(e))
             failed_tests.append(test_name)
             
             try:
@@ -474,7 +462,7 @@ def main():
     parser.add_argument(
         "-f", "--force",
         action="store_true",
-        help="Force re-run all tests (ignore previous results)"
+        help="Ignored (kept for backward compatibility)"
     )
     parser.add_argument(
         "--vng",
@@ -489,16 +477,8 @@ def main():
     parser.add_argument(
         "tests",
         nargs="*",
-        help="Specific test names to run (e.g., 'add-file-diff pass/long/multi-file') or 'clean'"
+        help="Specific test names to run (e.g., 'add-file-diff pass/long/multi-file')"
     )
-    
-    # Special commands
-    if len(sys.argv) > 1 and sys.argv[1] == "clean":
-        print("Clearing runtime test state...")
-        state = TestState()
-        state.clear_runtime()
-        print("Runtime test state cleared. All tests will re-run.")
-        return 0
     
     args = parser.parse_args()
     
@@ -644,15 +624,7 @@ def main():
     print(f"{colors.cyan}Running {len(filtered_tests)} runtime test(s){colors.reset}")
     print()
     
-    # Load state
-    state = TestState()
-    
-    # Clear runtime state if --force is used
-    if args.force:
-        state.clear_runtime()
-    
-    # Run runtime tests
-    return run_runtime_tests(filtered_tests, state, args)
+    return run_runtime_tests(filtered_tests, args)
 
 
 if __name__ == "__main__":
