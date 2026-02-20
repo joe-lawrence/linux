@@ -18,11 +18,9 @@ from lib import get_artifacts_dir, get_test_dir
 from lib.verification import get_expect_success
 
 
-# Build log: Result:     SUCCESS | FAILURE
+# Build and runtime logs both use Result:     SUCCESS | FAILURE
 RESULT_SUCCESS = re.compile(r"Result:\s+SUCCESS")
 RESULT_FAILURE = re.compile(r"Result:\s+FAILURE")
-# Runtime log: Result:     PASSED | FAILURE
-RESULT_PASSED = re.compile(r"Result:\s+PASSED")
 
 # Layout: "build:   " / "runtime: " (9 chars) + test name + padding, then fixed-width result columns
 ROW_PREFIX_LEN = 9
@@ -89,17 +87,17 @@ def get_build_result(artifacts_root: Path, profile: str, test: str) -> str:
 
 
 def get_runtime_result(artifacts_root: Path, profile: str, test: str) -> str:
-    """Return ok if result matches expectation (pass/ or fail/), FAIL if not, skip if no log."""
+    """Return ok if result matches expectation, FAIL if not, -- if expected-fail (runtime not run), else skip."""
     text = _read_log(artifacts_root, profile, test, "runtime-test.log")
+    expect_success = _get_expect_success_for_test(test)
     if not text:
-        return "skip"
-    if RESULT_PASSED.search(text):
+        return "--" if not expect_success else "skip"
+    if RESULT_SUCCESS.search(text):
         actual_success = True
     elif RESULT_FAILURE.search(text):
         actual_success = False
     else:
-        return "skip"
-    expect_success = _get_expect_success_for_test(test)
+        return "--" if not expect_success else "skip"
     return "ok" if actual_success == expect_success else "FAIL"
 
 
@@ -137,9 +135,9 @@ def _count_results(
     artifacts_root: Path,
     profiles: list[str],
     tests: list[str],
-) -> tuple[int, int, int, int, int, int]:
-    """Return (build_ok, build_fail, build_skip, runtime_ok, runtime_fail, runtime_skip)."""
-    b_ok = b_fail = b_skip = r_ok = r_fail = r_skip = 0
+) -> tuple[int, int, int, int, int, int, int]:
+    """Return (build_ok, build_fail, build_skip, runtime_ok, runtime_fail, runtime_skip, runtime_na)."""
+    b_ok = b_fail = b_skip = r_ok = r_fail = r_skip = r_na = 0
     for test in tests:
         for profile in profiles:
             br = get_build_result(artifacts_root, profile, test)
@@ -154,9 +152,11 @@ def _count_results(
                 r_ok += 1
             elif rr == "FAIL":
                 r_fail += 1
+            elif rr == "--":
+                r_na += 1
             else:
                 r_skip += 1
-    return (b_ok, b_fail, b_skip, r_ok, r_fail, r_skip)
+    return (b_ok, b_fail, b_skip, r_ok, r_fail, r_skip, r_na)
 
 
 def generate_report(
@@ -178,12 +178,12 @@ def generate_report(
     test_col_width = max_test_len + ROW_LABEL_PADDING
     row_label_width = ROW_PREFIX_LEN + test_col_width
 
-    b_ok, b_fail, b_skip, r_ok, r_fail, r_skip = _count_results(artifacts_root, profiles, tests)
+    b_ok, b_fail, b_skip, r_ok, r_fail, r_skip, r_na = _count_results(artifacts_root, profiles, tests)
     lines.extend([
         "Summary",
         "-------",
         f"build:   {b_ok} ok, {b_fail} FAIL, {b_skip} skip",
-        f"runtime: {r_ok} ok, {r_fail} FAIL, {r_skip} skip",
+        f"runtime: {r_ok} ok, {r_fail} FAIL, {r_skip} skip, {r_na} n/a",
         "",
         "Details",
         "-------",
