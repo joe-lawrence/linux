@@ -84,9 +84,7 @@ def _write_runtime_log(
         log.write(f"RUNTIME LOG: {test_name}\n")
         log.write(f"{'='*70}\n")
         log.write(f"Result:     {result_str}\n")
-        log.write(f"\n")
         log.write(f"Kernel:     {kernel}\n")
-        log.write(f"\n")
         for line in extra:
             log.write(f"{line}\n")
         if extra:
