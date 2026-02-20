@@ -33,6 +33,7 @@ help:
 	@printf "  %-32s - %s\n" "build_tests_quick" "Run quick tests only (pass/quick + fail/quick)"
 	@printf "  %-32s - %s\n" "build_tests PROFILE=a b" "Run build_tests for each profile (e.g. full-default full-default+overlay-thin-lto)"
 	@printf "  %-32s - %s\n" "runtime_tests" "Run runtime tests (auto-detects vng profile for VM mode)"
+	@printf "  %-32s - %s\n" "report" "Write artifacts/report.txt (profile x test matrix, staggered header)"
 	@printf "  %-32s - %s\n" "clean" "Remove __pycache__, *-generated.patch, and artifacts under selftest"
 
 # Stash path for .config when running build_tests with PROFILE=...
@@ -84,9 +85,13 @@ runtime_tests:
 	done; \
 	cd "$(KERNEL_SRC)" && python3 "$(SELFTEST_DIR)/run_runtime_tests.py" $$VNG_FLAG
 
+# report: write summary matrix from artifacts/ (profiles x tests, staggered header)
+report:
+	@python3 "$(SELFTEST_DIR)/report.py"
+
 clean:
 	@find "$(SELFTEST_DIR)" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; true
 	@find "$(SELFTEST_DIR)/tests" -type f -name '*-generated.patch' -delete 2>/dev/null; true
 	@rm -rf "$(SELFTEST_DIR)/artifacts"
 
-.PHONY: tests_config build_tests build_tests_quick runtime_tests clean help
+.PHONY: tests_config build_tests build_tests_quick runtime_tests report clean help
