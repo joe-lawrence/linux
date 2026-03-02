@@ -1,0 +1,8 @@
+# Full profile: Ubuntu 25.04 x86_64 kernel config.
+name: full-ubuntu-25
+description: Ubuntu 25.04 x86_64 config (kernel-6.14.0-x86_64.config)
+
+config_base:
+  - kernel-6.14.0-x86_64.config
+
+runtime: true

@@ -1,0 +1,8 @@
+# Full profile: Fedora 43 x86_64 kernel config.
+name: full-fedora-43
+description: Fedora 43 x86_64 config (kernel-6.17.1-x86_64.config)
+
+config_base:
+  - kernel-6.17.1-x86_64.config
+
+runtime: true

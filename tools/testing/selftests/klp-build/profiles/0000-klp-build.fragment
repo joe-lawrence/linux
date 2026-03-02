@@ -1,0 +1,11 @@
+# Minimal config for livepatch + klp-build selftests.
+# CONFIG_LIVEPATCH and CONFIG_KLP_BUILD when available.
+CONFIG_FTRACE=y
+CONFIG_KALLSYMS_ALL=y
+CONFIG_FUNCTION_TRACER=y
+CONFIG_DYNAMIC_FTRACE=y
+CONFIG_LIVEPATCH=y
+CONFIG_KLP_BUILD=y
+# Needed for livepatch kselftests
+CONFIG_DYNAMIC_DEBUG=y
+CONFIG_DYNAMIC_DEBUG_CORE=y

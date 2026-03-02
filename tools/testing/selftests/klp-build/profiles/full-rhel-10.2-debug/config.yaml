@@ -1,0 +1,8 @@
+# Full profile: RHEL 10.2 x86_64 debug kernel config.
+name: full-rhel-10.2-debug
+description: RHEL 10.2 x86_64 debug config (kernel-6.12.0-x86_64-debug.config)
+
+config_base:
+  - kernel-6.12.0-x86_64-debug.config
+
+runtime: true

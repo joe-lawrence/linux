@@ -1,0 +1,8 @@
+# Full profile: RHEL 10.2 x86_64 RT kernel config.
+name: full-rhel-10.2-rt
+description: RHEL 10.2 x86_64 RT config (kernel-6.12.0-x86_64-rt.config)
+
+config_base:
+  - kernel-6.12.0-x86_64-rt.config
+
+runtime: true

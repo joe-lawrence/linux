@@ -1,0 +1,8 @@
+# Overlay: klp-build fragment only (no config_base; use existing .config).
+name: overlay-klp-build
+description: klp-build fragment only (use existing .config or apply after a full profile)
+
+config_apply:
+  - ../0000-klp-build.fragment
+
+runtime: true

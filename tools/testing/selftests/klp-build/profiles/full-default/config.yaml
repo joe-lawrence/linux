@@ -1,0 +1,11 @@
+# Full profile: defconfig + klp-build fragment.
+name: full-default
+description: defconfig plus overlay-klp-build for klp-build tests
+
+config_base:
+  - make defconfig
+
+config_apply:
+  - ../0000-klp-build.fragment
+
+runtime: true

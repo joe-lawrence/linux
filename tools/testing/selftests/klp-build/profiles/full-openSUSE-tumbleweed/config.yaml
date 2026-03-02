@@ -1,0 +1,8 @@
+# Full profile: openSUSE Tumbleweed x86_64 kernel config.
+name: full-openSUSE-tumbleweed
+description: openSUSE Tumbleweed x86_64 config (kernel-6.19.3-x86_64.config)
+
+config_base:
+  - kernel-6.19.3-x86_64.config
+
+runtime: true

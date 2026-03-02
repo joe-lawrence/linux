@@ -1,0 +1,11 @@
+# Full profile: virtme-ng kconfig + klp-build fragment.
+name: full-virtme-ng
+description: virtme-ng --kconfig plus overlay-klp-build
+
+config_base:
+  - virtme-ng --kconfig
+
+config_apply:
+  - ../0000-klp-build.fragment
+
+runtime: true

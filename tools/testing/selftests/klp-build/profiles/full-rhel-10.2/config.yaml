@@ -1,0 +1,8 @@
+# Full profile: RHEL 10.2 x86_64 kernel config.
+name: full-rhel-10.2
+description: RHEL 10.2 x86_64 config (kernel-6.12.0-x86_64.config)
+
+config_base:
+  - kernel-6.12.0-x86_64.config
+
+runtime: true

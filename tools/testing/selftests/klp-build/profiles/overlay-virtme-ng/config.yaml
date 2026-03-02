@@ -1,0 +1,13 @@
+# Overlay: add virtme-ng kernel support to existing .config.
+# Uses virtme-configkernel --update to append virtme-ng's required
+# CONFIG options (9P, virtio, etc.) without replacing the base config.
+name: overlay-virtme-ng
+description: Add virtme-ng boot support to existing .config
+
+config_base:
+  - virtme-configkernel --update
+
+config_apply:
+  - ../0000-klp-build.fragment
+
+runtime: true
