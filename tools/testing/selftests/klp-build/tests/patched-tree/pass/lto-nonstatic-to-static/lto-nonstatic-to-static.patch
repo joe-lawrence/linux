@@ -1,0 +1,20 @@
+--- a/kernel/livepatch/klp_test_visibility.c
++++ b/kernel/livepatch/klp_test_visibility.c
+@@ -18,7 +18,7 @@ static int klp_test_nts_var;
+ 
+ noinline int klp_test_nts_func(void);
+ 
+-noinline int klp_test_nts_func(void)
++static noinline int klp_test_nts_func(void)
+ {
+ 	klp_test_nts_var += 10;
+ 	if (klp_test_nts_var > 1000)
+@@ -28,7 +28,7 @@ noinline int klp_test_nts_func(void)
+ 
+ static int klp_test_visibility_proc_show(struct seq_file *m, void *v)
+ {
+-	seq_printf(m, "nts unpatched %d\n", klp_test_nts_func());
++	seq_printf(m, "nts patched %d\n", klp_test_nts_func());
+ 	return 0;
+ }
+ 

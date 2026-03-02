@@ -1,0 +1,281 @@
+diff -Narup a/kernel/livepatch/Makefile b/kernel/livepatch/Makefile
+--- a/kernel/livepatch/Makefile
++++ b/kernel/livepatch/Makefile
+@@ -1,4 +1,10 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ obj-$(CONFIG_LIVEPATCH) += livepatch.o
++obj-$(CONFIG_LIVEPATCH) += klp_test.o
++obj-$(CONFIG_LIVEPATCH) += klp_test_hash.o
++klp_test_hash-y := klp_test_hash1.o klp_test_hash2.o
++obj-$(CONFIG_LIVEPATCH) += klp_test_visibility.o
++obj-$(CONFIG_LIVEPATCH) += klp_test_static.o
++obj-m += klp_test_mod.o
+ 
+ livepatch-objs := core.o patch.o shadow.o state.o transition.o
+diff -Narup a/kernel/livepatch/klp_test.c b/kernel/livepatch/klp_test.c
+--- a/kernel/livepatch/klp_test.c
++++ b/kernel/livepatch/klp_test.c
+@@ -0,0 +1,38 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * klp_test.c - Livepatch test helper (vmlinux target)
++ *
++ * Provides klp_test_function() for livepatch testing. Built into vmlinux.
++ */
++
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++
++/* Forward declaration */
++noinline int klp_test_function(void);
++
++/*
++ * klp_test_function - Simple test function to be livepatched
++ */
++noinline int klp_test_function(void)
++{
++	pr_info("klp_test: original function\n");
++	return 42;
++}
++EXPORT_SYMBOL_GPL(klp_test_function);
++
++static int klp_test_proc_show(struct seq_file *m, void *v)
++{
++	int result = klp_test_function();
++	seq_printf(m, "%d\n", result);
++	return 0;
++}
++
++static int __init klp_test_init(void)
++{
++	proc_create_single("klp_test", 0444, NULL, klp_test_proc_show);
++	return 0;
++}
++late_initcall(klp_test_init);
+diff -Narup a/kernel/livepatch/klp_test_hash1.c b/kernel/livepatch/klp_test_hash1.c
+--- a/kernel/livepatch/klp_test_hash1.c
++++ b/kernel/livepatch/klp_test_hash1.c
+@@ -0,0 +1,34 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * klp_test_hash1.c - ThinLTO hash collision test (file 1 of 2)
++ *
++ * Defines static __helper() with body "sum += i + 5". When linked
++ * as a multi-object with klp_test_hash2.c, ThinLTO promotes both
++ * to globals with unique .llvm.<hash> suffixes.
++ */
++
++#include <linux/kernel.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++
++static int klp_test_hash1_var;
++
++static noinline int __helper(int x, int len)
++{
++	int i, sum = x;
++
++	for (i = 0; i < len; i++)
++		sum += i + 5;
++	if (sum > 1000)
++		sum = 0;
++	return sum;
++}
++
++int klp_test_hash1_proc_show(struct seq_file *m, void *v);
++
++int klp_test_hash1_proc_show(struct seq_file *m, void *v)
++{
++	klp_test_hash1_var = __helper(klp_test_hash1_var, 5);
++	seq_printf(m, "hash1 unpatched %d\n", klp_test_hash1_var);
++	return 0;
++}
+diff -Narup a/kernel/livepatch/klp_test_hash2.c b/kernel/livepatch/klp_test_hash2.c
+--- a/kernel/livepatch/klp_test_hash2.c
++++ b/kernel/livepatch/klp_test_hash2.c
+@@ -0,0 +1,48 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * klp_test_hash2.c - ThinLTO hash collision test (file 2 of 2)
++ *
++ * Defines static __helper() with body "sum += i + 10". Same name
++ * but different body from klp_test_hash1.c.
++ *
++ * The livepatch test changes __helper() here, causing its hash
++ * to change. klp-build must match old and new symbols despite
++ * the hash change.
++ */
++
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++
++extern int klp_test_hash1_proc_show(struct seq_file *m, void *v);
++
++static int klp_test_hash2_var;
++
++static noinline int __helper(int x, int len)
++{
++	int i, sum = x;
++
++	for (i = 0; i < len; i++)
++		sum += i + 10;
++	if (sum > 1000)
++		sum = 0;
++	return sum;
++}
++
++static int klp_test_hash2_proc_show(struct seq_file *m, void *v)
++{
++	klp_test_hash2_var = __helper(klp_test_hash2_var, 5);
++	seq_printf(m, "hash2 unpatched %d\n", klp_test_hash2_var);
++	return 0;
++}
++
++static int __init klp_test_hash_init(void)
++{
++	proc_create_single("klp_test_hash1", 0444, NULL,
++			   klp_test_hash1_proc_show);
++	proc_create_single("klp_test_hash2", 0444, NULL,
++			   klp_test_hash2_proc_show);
++	return 0;
++}
++late_initcall(klp_test_hash_init);
+diff -Narup a/kernel/livepatch/klp_test_mod.c b/kernel/livepatch/klp_test_mod.c
+--- a/kernel/livepatch/klp_test_mod.c
++++ b/kernel/livepatch/klp_test_mod.c
+@@ -0,0 +1,46 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * klp_test_mod.c - Livepatch test module (loadable module target)
++ *
++ * Provides klp_test_mod_function() for livepatch testing.
++ */
++
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++
++/* Forward declaration */
++noinline int klp_test_mod_function(void);
++
++/*
++ * klp_test_mod_function - Module test function to be livepatched
++ */
++noinline int klp_test_mod_function(void)
++{
++	pr_info("klp_test_mod: original module function\n");
++	return 100;
++}
++EXPORT_SYMBOL_GPL(klp_test_mod_function);
++
++static int klp_test_mod_proc_show(struct seq_file *m, void *v)
++{
++	int result = klp_test_mod_function();
++	seq_printf(m, "%d\n", result);
++	return 0;
++}
++
++static int __init klp_test_mod_init(void)
++{
++	proc_create_single("klp_test_mod", 0444, NULL, klp_test_mod_proc_show);
++	return 0;
++}
++
++static void __exit klp_test_mod_exit(void)
++{
++	remove_proc_entry("klp_test_mod", NULL);
++}
++
++module_init(klp_test_mod_init);
++module_exit(klp_test_mod_exit);
++MODULE_LICENSE("GPL");
+diff -Narup a/kernel/livepatch/klp_test_static.c b/kernel/livepatch/klp_test_static.c
+--- a/kernel/livepatch/klp_test_static.c
++++ b/kernel/livepatch/klp_test_static.c
+@@ -0,0 +1,37 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * klp_test_static.c - Test static to non-static visibility change
++ *
++ * klp_test_stn_func() starts as static (LOCAL). The livepatch
++ * changes it to non-static (GLOBAL), testing objtool's ability
++ * to correlate symbols under ThinLTO.
++ */
++
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++
++static int klp_test_stn_var;
++
++static noinline int klp_test_stn_func(void)
++{
++	klp_test_stn_var += 5;
++	if (klp_test_stn_var > 1000)
++		klp_test_stn_var = 0;
++	return klp_test_stn_var;
++}
++
++static int klp_test_static_proc_show(struct seq_file *m, void *v)
++{
++	seq_printf(m, "stn unpatched %d\n", klp_test_stn_func());
++	return 0;
++}
++
++static int __init klp_test_static_init(void)
++{
++	proc_create_single("klp_test_static", 0444, NULL,
++			   klp_test_static_proc_show);
++	return 0;
++}
++late_initcall(klp_test_static_init);
+diff -Narup a/kernel/livepatch/klp_test_visibility.c b/kernel/livepatch/klp_test_visibility.c
+--- a/kernel/livepatch/klp_test_visibility.c
++++ b/kernel/livepatch/klp_test_visibility.c
+@@ -0,0 +1,39 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * klp_test_visibility.c - Test non-static to static visibility change
++ *
++ * klp_test_nts_func() starts as non-static (GLOBAL). The livepatch
++ * changes it to static (LOCAL), testing objtool's ability to
++ * correlate symbols under ThinLTO.
++ */
++
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++
++static int klp_test_nts_var;
++
++noinline int klp_test_nts_func(void);
++
++noinline int klp_test_nts_func(void)
++{
++	klp_test_nts_var += 10;
++	if (klp_test_nts_var > 1000)
++		klp_test_nts_var = 0;
++	return klp_test_nts_var;
++}
++
++static int klp_test_visibility_proc_show(struct seq_file *m, void *v)
++{
++	seq_printf(m, "nts unpatched %d\n", klp_test_nts_func());
++	return 0;
++}
++
++static int __init klp_test_visibility_init(void)
++{
++	proc_create_single("klp_test_visibility", 0444, NULL,
++			   klp_test_visibility_proc_show);
++	return 0;
++}
++late_initcall(klp_test_visibility_init);
+

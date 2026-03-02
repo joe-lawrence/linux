@@ -1,0 +1,13 @@
+--- a/kernel/livepatch/klp_test_mod.c
++++ b/kernel/livepatch/klp_test_mod.c
+@@ -20,8 +20,8 @@ noinline int klp_test_mod_function(void)
+  */
+ noinline int klp_test_mod_function(void)
+ {
+-	pr_info("klp_test_mod: original module function\n");
+-	return 100;
++	pr_info("klp_test_mod: PATCHED module function\n");
++	return 200;
+ }
+ EXPORT_SYMBOL_GPL(klp_test_mod_function);
+ 

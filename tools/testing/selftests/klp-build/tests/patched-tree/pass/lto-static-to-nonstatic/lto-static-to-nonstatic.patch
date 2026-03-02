@@ -1,0 +1,22 @@
+--- a/kernel/livepatch/klp_test_static.c
++++ b/kernel/livepatch/klp_test_static.c
+@@ -16,7 +16,9 @@
+ 
+ static int klp_test_stn_var;
+ 
+-static noinline int klp_test_stn_func(void)
++noinline int klp_test_stn_func(void);
++
++noinline int klp_test_stn_func(void)
+ {
+ 	klp_test_stn_var += 5;
+ 	if (klp_test_stn_var > 1000)
+@@ -26,7 +28,7 @@ static noinline int klp_test_stn_func(vo
+ 
+ static int klp_test_static_proc_show(struct seq_file *m, void *v)
+ {
+-	seq_printf(m, "stn unpatched %d\n", klp_test_stn_func());
++	seq_printf(m, "stn patched %d\n", klp_test_stn_func());
+ 	return 0;
+ }
+ 

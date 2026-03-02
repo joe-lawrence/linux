@@ -1,0 +1,20 @@
+--- a/kernel/livepatch/klp_test_hash2.c
++++ b/kernel/livepatch/klp_test_hash2.c
+@@ -25,7 +25,7 @@ static noinline int __helper(int x, int
+ 	int i, sum = x;
+ 
+ 	for (i = 0; i < len; i++)
+-		sum += i + 10;
++		sum += i * 2 + 10;
+ 	if (sum > 1000)
+ 		sum = 0;
+ 	return sum;
+@@ -34,7 +34,7 @@ static noinline int __helper(int x, int
+ static int klp_test_hash2_proc_show(struct seq_file *m, void *v)
+ {
+ 	klp_test_hash2_var = __helper(klp_test_hash2_var, 5);
+-	seq_printf(m, "hash2 unpatched %d\n", klp_test_hash2_var);
++	seq_printf(m, "hash2 patched %d\n", klp_test_hash2_var);
+ 	return 0;
+ }
+ 

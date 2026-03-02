@@ -1,0 +1,11 @@
+--- a/kernel/livepatch/klp_test.c
++++ b/kernel/livepatch/klp_test.c
+@@ -22,7 +22,7 @@ noinline int klp_test_function(void);
+  */
+ noinline int klp_test_function(void)
+ {
+-	pr_info("klp_test: original function\n");
++	pr_info("klp_test: vmlinux PATCHED\n");
+ 	return 42;
+ }
+ EXPORT_SYMBOL_GPL(klp_test_function);
