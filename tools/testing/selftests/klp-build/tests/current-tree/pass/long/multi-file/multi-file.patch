@@ -1,0 +1,30 @@
+From: Test Author <test@example.com>
+Subject: [PATCH] proc: add debug messages to cmdline and version
+
+Multi-file livepatch test case.
+
+This patch modifies functions in two different files to verify
+klp-build correctly handles changes across multiple compilation units.
+
+diff --git a/fs/proc/cmdline.c b/fs/proc/cmdline.c
+--- a/fs/proc/cmdline.c
++++ b/fs/proc/cmdline.c
+@@ -8,6 +8,7 @@
+ 
+ static int cmdline_proc_show(struct seq_file *m, void *v)
+ {
++	pr_info("klp-build-test: cmdline_proc_show called\n");
+ 	seq_puts(m, saved_command_line);
+ 	seq_putc(m, '\n');
+ 	return 0;
+diff --git a/fs/proc/version.c b/fs/proc/version.c
+--- a/fs/proc/version.c
++++ b/fs/proc/version.c
+@@ -10,6 +10,7 @@
+ 
+ static int version_proc_show(struct seq_file *m, void *v)
+ {
++	pr_info("klp-build-test: version_proc_show called\n");
+ 	seq_printf(m, linux_proc_banner,
+ 		utsname()->sysname,
+ 		utsname()->release,

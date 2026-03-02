@@ -1,0 +1,19 @@
+From: Test Author <test@example.com>
+Subject: [PATCH 2/2] proc/loadavg: add debug message
+
+Multi-patch test case - second patch.
+
+This is the second of two patches that will be applied together
+to verify klp-build handles multiple patch inputs.
+
+diff --git a/fs/proc/loadavg.c b/fs/proc/loadavg.c
+--- a/fs/proc/loadavg.c
++++ b/fs/proc/loadavg.c
+@@ -14,6 +14,7 @@ static int loadavg_proc_show(struct seq_file *m, void *v)
+ {
+ 	unsigned long avnrun[3];
+ 
++	pr_info("klp-build-test: loadavg patch 2\n");
+ 	get_avenrun(avnrun, FIXED_1/200, 0);
+ 
+ 	seq_printf(m, "%lu.%02lu %lu.%02lu %lu.%02lu %u/%d %d\n",
