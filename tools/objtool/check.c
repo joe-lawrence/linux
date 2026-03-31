@@ -3662,6 +3662,14 @@ static bool skip_alt_group(struct instruction *insn)
 	return alt_insn->type == INSN_CLAC || alt_insn->type == INSN_STAC;
 }
 
+static void enable_debug_checksum(struct symbol *sym, void *d)
+{
+	bool *found = d;
+
+	sym->debug_checksum = 1;
+	*found = true;
+}
+
 static int checksum_debug_init(struct objtool_file *file)
 {
 	char *dup, *s;
@@ -3677,18 +3685,16 @@ static int checksum_debug_init(struct objtool_file *file)
 
 	s = dup;
 	while (*s) {
-		struct symbol *func;
+		bool found = false;
 		char *comma;
 
 		comma = strchr(s, ',');
 		if (comma)
 			*comma = '\0';
 
-		func = find_symbol_by_name(file->elf, s);
-		if (!func || !is_func_sym(func))
+		iterate_func_by_name(file->elf, s, enable_debug_checksum, &found);
+		if (!found)
 			WARN("--debug-checksum: can't find '%s'", s);
-		else
-			func->debug_checksum = 1;
 
 		if (!comma)
 			break;
