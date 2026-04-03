@@ -1400,6 +1400,7 @@ entsize:
 /* Keep a special section entry if it references an included function */
 static bool should_keep_special_sym(struct elf *elf, struct symbol *sym)
 {
+	bool annotate_insn = !strcmp(sym->sec->name, ".discard.annotate_insn");
 	struct reloc *reloc;
 
 	if (is_sec_sym(sym) || !sym->sec->rsec)
@@ -1409,7 +1410,18 @@ static bool should_keep_special_sym(struct elf *elf, struct symbol *sym)
 		if (convert_reloc_sym(elf, reloc))
 			continue;
 
-		if (is_func_sym(reloc->sym) && reloc->sym->included)
+		if (!reloc->sym->clone || is_undef_sym(reloc->sym->clone))
+			continue;
+
+		/*
+		 * Normally only FUNC symbols are relevant here, but
+		 * .discard.annotate_insn can also reference fake NOTYPE
+		 * .altinstr_replacement symbols.  Include those annotations
+		 * as they're needed by objtool during the final livepatch
+		 * module link.
+		 */
+		if (is_func_sym(reloc->sym) ||
+		    (annotate_insn && is_notype_sym(reloc->sym)))
 			return true;
 	}
 
@@ -1553,13 +1565,22 @@ static int clone_special_section(struct elfs *e, struct section *patched_sec)
 /* Extract only the needed bits from special sections */
 static int clone_special_sections(struct elfs *e)
 {
-	struct section *patched_sec;
+	struct section *sec, *annotate_insn = NULL;
 
-	for_each_sec(e->patched, patched_sec) {
-		if (is_special_section(patched_sec)) {
-			if (clone_special_section(e, patched_sec))
+	for_each_sec(e->patched, sec) {
+		if (is_special_section(sec)) {
+			if (!strcmp(sec->name, ".discard.annotate_insn")) {
+				annotate_insn = sec;
+				continue;
+			}
+			if (clone_special_section(e, sec))
 				return -1;
 		}
+	}
+
+	if (annotate_insn) {
+		if (clone_special_section(e, annotate_insn))
+			return -1;
 	}
 
 	return 0;
