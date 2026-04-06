@@ -20,7 +20,6 @@
 #include <linux/stringify.h>
 #include <linux/string.h>
 #include <linux/jhash.h>
-
 #define sizeof_field(TYPE, MEMBER) sizeof((((TYPE *)0)->MEMBER))
 
 struct elfs {
@@ -213,6 +212,65 @@ static int read_sym_checksums(struct elf *elf)
 	return 0;
 }
 
+/*
+ * Detect the number of prefix bytes before functions by examining
+ * __patchable_function_entries (PFE) sections.
+ *
+ * On x86, PFE target matches __pfx_ symbol; real function at target+N.
+ * On arm64 with call_ops, no symbol at target; function at target+8.
+ * On arm64 without call_ops, function at target directly; prefix_size stays 0.
+ *
+ * Also mark each function that has a PFE entry so __clone_symbol() knows to
+ * include the prefix bytes in the cloned data.
+ */
+static int mark_prefixes(struct elf *elf)
+{
+	struct section *sec;
+	struct reloc *reloc;
+	bool found = false;
+
+	for_each_sec(elf, sec) {
+		if (strcmp(sec->name, "__patchable_function_entries"))
+			continue;
+		if (!sec->rsec)
+			continue;
+
+		for_each_reloc(sec->rsec, reloc) {
+			struct symbol *func;
+			int i;
+
+			if (!found) {
+				for (i = 0; i <= 16; i += 4) {
+					func = find_func_by_offset(reloc->sym->sec,
+								   reloc->sym->offset +
+								   reloc_addend(reloc) + i);
+					if (!func || func->prefix)
+						continue;
+
+					elf->prefix_size = i;
+					found = true;
+					break;
+				}
+			} else {
+				func = find_func_by_offset(reloc->sym->sec,
+							   reloc->sym->offset +
+							   reloc_addend(reloc) +
+							   elf->prefix_size);
+			}
+
+			if (func)
+				func->has_prefix = 1;
+		}
+	}
+
+	if (!found && find_section_by_name(elf, "__patchable_function_entries")) {
+		ERROR("can't find __patchable_function_entries prefix size");
+		return -1;
+	}
+
+	return 0;
+}
+
 static struct symbol *first_file_symbol(struct elf *elf)
 {
 	struct symbol *sym;
@@ -287,6 +345,7 @@ static bool is_special_section(struct section *sec)
 		"__ex_table",
 		"__jump_table",
 		"__mcount_loc",
+		"__patchable_function_entries",
 
 		/*
 		 * Extract .static_call_sites here to inherit non-module
@@ -651,20 +710,25 @@ static struct symbol *__clone_symbol(struct elf *elf, struct symbol *patched_sym
 			offset = ALIGN(sec_size(out_sec), out_sec->sh.sh_addralign);
 
 		if (patched_sym->len || is_sec_sym(patched_sym)) {
+			size_t size, prefix_size = 0;
 			void *data = NULL;
-			size_t size;
+
+			if (patched_sym->has_prefix)
+				prefix_size = elf->prefix_size;
 
 			/* bss doesn't have data */
 			if (patched_sym->sec->data->d_buf)
-				data = patched_sym->sec->data->d_buf + patched_sym->offset;
+				data = patched_sym->sec->data->d_buf + patched_sym->offset - prefix_size;
 
 			if (is_sec_sym(patched_sym))
 				size = sec_size(patched_sym->sec);
 			else
-				size = patched_sym->len;
+				size = patched_sym->len + prefix_size;
 
 			if (!elf_add_data(elf, out_sec, data, size))
 				return NULL;
+
+			offset += prefix_size;
 		}
 	}
 
@@ -710,19 +774,10 @@ static const char *sym_bind(struct symbol *sym)
 static struct symbol *clone_symbol(struct elfs *e, struct symbol *patched_sym,
 				   bool data_too)
 {
-	struct symbol *pfx;
-
 	if (patched_sym->clone)
 		return patched_sym->clone;
 
 	dbg_indent("%s%s", patched_sym->name, data_too ? " [+DATA]" : "");
-
-	/* Make sure the prefix gets cloned first */
-	if (is_func_sym(patched_sym) && data_too) {
-		pfx = get_func_prefix(patched_sym);
-		if (pfx)
-			clone_symbol(e, pfx, true);
-	}
 
 	if (!__clone_symbol(e->out, patched_sym, data_too))
 		return NULL;
@@ -735,14 +790,7 @@ static struct symbol *clone_symbol(struct elfs *e, struct symbol *patched_sym,
 
 static void mark_included_function(struct symbol *func)
 {
-	struct symbol *pfx;
-
 	func->included = 1;
-
-	/* Include prefix function */
-	pfx = get_func_prefix(func);
-	if (pfx)
-		pfx->included = 1;
 
 	/* Make sure .cold parent+child always stay together */
 	if (func->cfunc && func->cfunc != func)
@@ -966,14 +1014,43 @@ static int convert_reloc_sym_to_secsym(struct elf *elf, struct reloc *reloc)
 	return 0;
 }
 
+/*
+ * __patchable_function_entries relocs point to the patchable entry NOPs, which
+ * are ef->prefix_size before the function symbol.
+ *
+ * Some entries (e.g., syscall -ENOSYS stubs) don't have a corresponding
+ * function symbol.  Skip those with a return value of 1.
+ */
+static int convert_pfe_reloc(struct elf *elf, struct reloc *reloc)
+{
+	struct symbol *func;
+
+	if (!elf->prefix_size)
+		return 1;
+
+	func = find_func_by_offset(reloc->sym->sec,
+				   reloc_addend(reloc) + elf->prefix_size);
+	if (!func)
+		return 1;
+
+	reloc->sym = func;
+	set_reloc_sym(elf, reloc, func->idx);
+	set_reloc_addend(elf, reloc, -(int)elf->prefix_size);
+	return 0;
+}
+
 static int convert_reloc_secsym_to_sym(struct elf *elf, struct reloc *reloc)
 {
 	struct symbol *sym = reloc->sym;
 	struct section *sec = sym->sec;
+	size_t prefix_size = is_text_sec(sec) ? elf->prefix_size : 0;
+
+	if (!strcmp(reloc->sec->name, ".rela__patchable_function_entries"))
+		return convert_pfe_reloc(elf, reloc);
 
 	/* If the symbol has a dedicated section, it's easy to find */
-	sym = find_symbol_by_offset(sec, 0);
-	if (sym && sym->len == sec_size(sec))
+	sym = find_symbol_by_offset(sec, prefix_size);
+	if (sym && sym->len == (sec_size(sec) - prefix_size))
 		goto found_sym;
 
 	/* No dedicated section; find the symbol manually */
@@ -1215,6 +1292,7 @@ static int clone_sym_relocs(struct elfs *e, struct symbol *patched_sym)
 	struct reloc *patched_reloc;
 	unsigned long start, end;
 	struct symbol *out_sym;
+	int ret;
 
 	out_sym = patched_sym->clone;
 	if (!out_sym) {
@@ -1254,12 +1332,15 @@ static int clone_sym_relocs(struct elfs *e, struct symbol *patched_sym)
 		    !strcmp(patched_reloc->sym->sec->name, ".altinstr_aux"))
 			continue;
 
-		if (convert_reloc_sym(e->patched, patched_reloc)) {
+		ret = convert_reloc_sym(e->patched, patched_reloc);
+		if (ret < 0) {
 			ERROR_FUNC(patched_rsec->base, reloc_offset(patched_reloc),
 				   "failed to convert reloc sym '%s' to its proper format",
 				   patched_reloc->sym->name);
 			return -1;
 		}
+		if (ret)
+			continue;
 
 		offset = out_sym->offset + (reloc_offset(patched_reloc) - patched_sym->offset);
 
@@ -1539,6 +1620,7 @@ static int validate_special_section_klp_reloc(struct elfs *e, struct symbol *sym
 
 static int clone_special_section(struct elfs *e, struct section *patched_sec)
 {
+	bool is_pfe = !strcmp(patched_sec->name, "__patchable_function_entries");
 	struct symbol *patched_sym;
 
 	/*
@@ -1546,6 +1628,8 @@ static int clone_special_section(struct elfs *e, struct section *patched_sec)
 	 * reference included functions.
 	 */
 	sec_for_each_sym(patched_sec, patched_sym) {
+		struct section *out_sec;
+		struct symbol *out_sym;
 		int ret;
 
 		if (!is_object_sym(patched_sym))
@@ -1560,8 +1644,18 @@ static int clone_special_section(struct elfs *e, struct section *patched_sec)
 		if (ret > 0)
 			continue;
 
-		if (!clone_symbol(e, patched_sym, true))
+		out_sym = clone_symbol(e, patched_sym, true);
+		if (!out_sym)
 			return -1;
+
+		out_sec = out_sym->sec;
+		if (is_pfe && !out_sec->sh.sh_link) {
+			struct reloc *patched_reloc;
+
+			patched_reloc = find_reloc_by_dest(e->patched, patched_sec,
+							   patched_sym->offset);
+			out_sec->sh.sh_link = patched_reloc->sym->clone->sec->idx;
+		}
 	}
 
 	return 0;
@@ -1854,9 +1948,14 @@ int cmd_klp_diff(int argc, const char **argv)
 	if (mark_changed_functions(&e))
 		return 0;
 
+	if (mark_prefixes(e.patched))
+		return -1;
+
 	e.out = elf_create_file(&e.orig->ehdr, argv[2]);
 	if (!e.out)
 		return -1;
+
+	e.out->prefix_size = e.patched->prefix_size;
 
 	/*
 	 * Special section fake symbols are needed so that individual special
