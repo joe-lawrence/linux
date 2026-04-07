@@ -59,8 +59,9 @@ struct section {
 	    truncate			: 1,
 	    data_owned			: 1,
 	    data_overallocated		: 1,
-	    relocs_overallocated	: 1;
-	    /* 23 bit hole */
+	    relocs_overallocated	: 1,
+	    annotated_data		: 1;
+	    /* 22 bit hole */
 
 	struct reloc *relocs;
 	struct section *twin;

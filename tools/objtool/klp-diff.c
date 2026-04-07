@@ -1447,6 +1447,8 @@ static int create_fake_symbols(struct elf *elf)
 
 		if (create_fake_symbol(elf, reloc->sym->sec, offset, size))
 			return -1;
+
+		reloc->sym->sec->annotated_data = true;
 	}
 
 	/*
@@ -1457,7 +1459,7 @@ entsize:
 		unsigned int entry_size;
 		unsigned long offset;
 
-		if (!is_special_section(sec) || find_symbol_by_offset(sec, 0))
+		if (!is_special_section(sec) || sec->annotated_data)
 			continue;
 
 		if (!sec->rsec) {
