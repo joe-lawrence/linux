@@ -129,8 +129,29 @@ test_name="$(basename "$0" .sh)"
 workdir=
 
 pass() { echo "ok - $test_name${1:+: $1}"; exit 0; }
-fail() { echo "not ok - $test_name: $1" >&2; exit 1; }
-skip() { echo "ok - $test_name # SKIP $1"; exit 0; }
+fail() { echo "not ok - $test_name: $1"; exit 1; }
+
+# Two kinds of skip, and the runner tells them apart.
+#
+#   declared_skip  the test said in advance it does not apply here, e.g.
+#                  gcc_only on a clang run.  Expected indefinitely.
+#   probe_skip     the construct did not turn up in the built object this
+#                  time.  Weaker: it may appear on another compiler version,
+#                  and one which becomes permanent is a fixture that quietly
+#                  stopped testing anything.
+#
+# A bare skip() is neither, and the runner counts it as a failure: a test which
+# gives up for a reason it never declared is a hole, not an outcome.
+declared_skip() { echo "ok - $test_name # SKIP (declared) $1"; exit 0; }
+probe_skip()    { echo "ok - $test_name # SKIP (probe) $1"; exit 0; }
+skip()          { echo "ok - $test_name # SKIP $1"; exit 0; }
+
+# TAP directives.  A test which is known to fail reports it rather than being
+# commented out and forgotten, and one which starts passing again says so
+# instead of quietly going green: the expectation has to be removed by hand,
+# which is the point.
+xfail() { echo "not ok - $test_name${1:+: $1} # TODO known failure"; exit 0; }
+xpass() { echo "ok - $test_name${1:+: $1} # TODO expected failure, but passed"; exit 1; }
 
 cleanup() { [ -n "$workdir" ] && rm -rf "$workdir"; }
 
@@ -160,6 +181,23 @@ export_syms()
 	done
 }
 
+# gcc_only / clang_only <reason>
+gcc_only()
+{
+	case "$($CC --version 2>/dev/null | head -1)" in
+	*[Gg][Cc][Cc]*)	return 0 ;;
+	esac
+	declared_skip "gcc only${1:+: $1}"
+}
+
+clang_only()
+{
+	case "$($CC --version 2>/dev/null | head -1)" in
+	*clang*)	return 0 ;;
+	esac
+	declared_skip "clang only${1:+: $1}"
+}
+
 # build_pair <fixture.c> [cflags...]
 build_pair()
 {
@@ -168,9 +206,9 @@ build_pair()
 	[ -f "$fixture" ] || fail "missing fixture $fixture"
 
 	$CC $FIXTURE_CFLAGS "$@" -o "$workdir/orig.o" "$fixture" 2>"$workdir/cc.log" ||
-		skip "fixture does not build here: $(tail -1 "$workdir/cc.log")"
+		probe_skip "fixture does not build here: $(tail -1 "$workdir/cc.log")"
 	$CC $FIXTURE_CFLAGS "$@" -DPATCHED -o "$workdir/patched.o" "$fixture" 2>"$workdir/cc.log" ||
-		skip "fixture does not build here: $(tail -1 "$workdir/cc.log")"
+		probe_skip "fixture does not build here: $(tail -1 "$workdir/cc.log")"
 }
 
 # run_diff [expected exit status]
