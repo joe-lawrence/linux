@@ -8,7 +8,7 @@ int other(int x)
 {
 	asm volatile(
 		"2:					\n\t"
-		".pushsection	.smp_locks, \"a\"	\n\t"
+		".pushsection	.kcfi_traps, \"a\"	\n\t"
 		".balign	4			\n\t"
 		".long		2b - .			\n\t"
 		".popsection				\n\t");
@@ -19,7 +19,7 @@ int target(int x)
 {
 	asm volatile(
 		"1:					\n\t"
-		".pushsection	.smp_locks, \"a\"	\n\t"
+		".pushsection	.kcfi_traps, \"a\"	\n\t"
 		".balign	4			\n\t"
 		".long		1b - .			\n\t"
 		".popsection				\n\t");

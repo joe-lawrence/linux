@@ -11,9 +11,9 @@ int target(int x)
 {
 	asm volatile(
 		"1:						\n\t"
-		".pushsection	.smp_locks, \"a\"		\n\t"
+		".pushsection	.kcfi_traps, \"a\"		\n\t"
 		".balign	4				\n\t"
-		"sl_marker:					\n\t"
+		"trap_marker:					\n\t"
 		".long		1b - .				\n\t"
 		".popsection					\n\t");
 #ifdef PATCHED
