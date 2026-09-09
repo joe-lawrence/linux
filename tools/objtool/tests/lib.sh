@@ -145,7 +145,7 @@ orig_obj=orig.o
 patched_obj=patched.o
 
 pass() { echo "ok - $test_name${1:+: $1}"; exit 0; }
-fail() { echo "not ok - $test_name: $1"; exit 1; }
+fail() { KLP_TEST_FAILED=1; echo "not ok - $test_name: $1"; exit 1; }
 
 # Two kinds of skip, and the runner tells them apart.
 #
@@ -167,18 +167,20 @@ skip()          { echo "ok - $test_name # SKIP $1"; exit 0; }
 # instead of quietly going green: the expectation has to be removed by hand,
 # which is the point.
 xfail() { echo "not ok - $test_name${1:+: $1} # TODO known failure"; exit 0; }
-xpass() { echo "ok - $test_name${1:+: $1} # TODO expected failure, but passed"; exit 1; }
+xpass() { KLP_TEST_FAILED=1; echo "ok - $test_name${1:+: $1} # TODO expected failure, but passed"; exit 1; }
 
 cleanup()
 {
 	[ -n "$workdir" ] || return 0
 
-	if [ -n "${KLP_TEST_KEEP:-}" ]; then
-		[ -n "${KLP_TEST_WORKDIR:-}" ] || echo "# kept $workdir"
-		return 0
-	fi
-
-	rm -rf "$workdir"
+	case "${KLP_TEST_KEEP:-failed}" in
+	all)	return 0 ;;
+	none)	rm -rf "$workdir" ;;
+	failed|*)
+		[ -n "${KLP_TEST_FAILED:-}" ] && return 0
+		rm -rf "$workdir"
+		;;
+	esac
 }
 
 # setup [exported symbol...]
