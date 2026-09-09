@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0
 #
 # klp diff extracts entries from eight special sections.  Between them the
-# existing tests reach .smp_locks, __jump_table, .static_call_sites and
+# existing tests reach .kcfi_traps, __jump_table, .static_call_sites and
 # .altinstructions; __bug_table, __ex_table and __mcount_loc are covered by
 # nothing, though the same extraction code serves all of them.
 #

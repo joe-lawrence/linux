@@ -134,7 +134,7 @@ the construct in the first place, and reads as coverage it does not have.  Say
 what the input must contain::
 
     assert_input_section __jump_table     # the fixture must produce it -> fail
-    require_input_section .smp_locks      # this compiler may not      -> skip
+    require_input_section .kcfi_traps     # this compiler may not      -> skip
 
 Prefer ``assert_*``.  Reach for ``require_*`` only where absence genuinely
 depends on compiler version or flags, and follow it with something
