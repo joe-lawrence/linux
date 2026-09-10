@@ -22,8 +22,14 @@ static const char __modinfo[]
 
 /* SHN_ABS, referenced from code. */
 extern char abs_sym[];
+
+/*
+ * AArch64 cannot reference a 0x1234 absolute symbol from a PC-relative load
+ * ("fixup value out of range").  Use a small value on all targets and load
+ * through a volatile pointer so the reference survives optimisation.
+ */
 __asm__(".globl abs_sym\n"
-	".set abs_sym, 0x1234\n");
+	".set abs_sym, 0x100\n");
 
 int helper(int x);
 int helper(int x) { return x + 1; }
@@ -36,9 +42,11 @@ __asm__(".pushsection .discard.addressable, \"aw\"\n"
 
 int target(int x)
 {
+	volatile char *abs_ref = abs_sym;
+
 #ifdef PATCHED
-	return helper(x) + (int)(long)abs_sym + 1;
+	return helper(x) + (int)*abs_ref + 1;
 #else
-	return helper(x) + (int)(long)abs_sym;
+	return helper(x) + (int)*abs_ref;
 #endif
 }
