@@ -29,14 +29,15 @@
 . "$(dirname "$0")/../lib.sh"
 
 setup
+clang_only "ThinLTO requires clang"
+
 find_thinlto_toolchain ||
-	probe_skip "no matching clang/lld pair for a ThinLTO link; set THIN_CC and THIN_LD to one"
+	probe_skip "no matching clang/lld pair for a ThinLTO link; set THIN_LD to one"
 
 build_thinlto()		# $1 output object, $2 extra flags
 {
 	local t
 	for t in "" -DTU_B -DTU_C; do
-		# shellcheck disable=SC2086
 		$THIN_CC -flto=thin -O2 -ffunction-sections -fdata-sections \
 			$2 $t -c "$FIXTURES_DIR/thinlto_ambiguity.c" \
 			-o "$workdir/tu$t.o" 2>/dev/null || return 1

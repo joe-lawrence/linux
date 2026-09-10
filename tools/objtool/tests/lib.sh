@@ -441,16 +441,20 @@ build_module_pair()
 
 # find_thinlto_toolchain
 #
-# Set $THIN_CC and $THIN_LD to a clang and lld from the same LLVM release.  A
+# Set $THIN_LD to an lld from the same LLVM release as $CC (or THIN_CC).  A
 # mismatched pair fails with "Invalid summary version", which reads like a
 # broken test rather than a broken environment.
+#
+# ThinLTO is clang-only; callers must use clang_only before calling this.
+# Only $CC (or an explicit THIN_CC override) is consulted -- the harness does
+# not search for a second compiler beside a gcc $CC.
 find_thinlto_toolchain()
 {
-	local cc ld ver
+	local cc ver ld
 
-	for cc in "${THIN_CC:-}" "$CC" clang; do
+	for cc in "${THIN_CC:-}" "$CC"; do
 		[ -n "$cc" ] || continue
-		command -v "${cc%% *}" >/dev/null 2>&1 || continue
+		command -v "${cc%% *}" >/dev/null 2>&1 || return 1
 
 		ver=$($cc -dumpversion 2>/dev/null | cut -d. -f1)
 
