@@ -14,7 +14,14 @@
 . "$(dirname "$0")/../lib.sh"
 
 setup
-build_pair local_to_global.c
+
+# aarch64 gcc adds BTI landing pads when a function goes from static to global,
+# changing the checksum even though only linkage moved.  The kernel may build
+# with branch protection, but this test is about linkage, not BTI.
+extra=
+[ "$KLP_TEST_ARCH" = arm64 ] && extra=-mbranch-protection=none
+
+build_pair local_to_global.c $extra
 
 # Confirm the fixture really moved the bindings, in both directions.
 in_symbols orig.o    | grep -qE 'LOCAL.*flipped_up' ||
